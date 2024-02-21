@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+
+# Distribution / packaging
+dist/
+
+# dotenv
+.env
+
+# virtualenv
+.venv
+
+# mypy
+.mypy_cache/
+
+# IDE settings
+.vscode/
+.idea/
+/coverage.xml
+/.coverage
+/workdir/

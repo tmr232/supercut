@@ -1,0 +1,69 @@
+[tool.poetry]
+name = "supercut"
+version = "0.1.0"
+description = "Subtitle-based automatic supercut tool"
+authors = ["Tamir Bahar"]
+license = "MIT"
+readme = "README.md"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+supercut = "supercut.supercut:app"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pysubs2 = "^1.6.1"
+attrs = "^23.2.0"
+typer = "^0.9.0"
+structlog = "^24.1.0"
+rich = "^13.7.0"
+more-itertools = "^10.2.0"
+diskcache = "^5.6.3"
+
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.1.0"
+black = "^24.1.0"
+isort = "^5.12.0"
+nox = "^2023.4.22"
+mypy = "^1.2.0"
+pytest = "^8.0.0"
+pytest-cov = "^4.0.0"
+
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.isort]
+# Configure isort to work without access to site-packages
+known_first_party = ["supercut", "tests"]
+
+# Settings for Black compatibility
+profile = "black"
+line_length = 88
+
+
+[tool.mypy]
+check_untyped_defs = true
+python_version = "3.11"
+
+[tool.pytest.ini_options]
+xfail_strict = true
+addopts = "-ra -q --cov --cov-report=xml --cov-report=term-missing"
+testpaths = [
+    "tests",
+]
+
+
+[tool.ruff]
+# Avoid automatic removal of unused variables
+unfixable = ['F841'] # unused-variable
+
+
+[tool.coverage]
+report.skip_covered = true
