@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "supercut"
 version = "0.1.0"
-description = "Subtitle-based automatic supercut tool"
+description = "Subtitle-based automatic supercut creation"
 authors = ["Tamir Bahar"]
 license = "MIT"
 readme = "README.md"
