@@ -14,11 +14,14 @@ VLC_ENV_VAR = "SUPERCUT_VLC_PATH"
 
 
 def get_vlc() -> str:
+    if vlc := os.environ.get(VLC_ENV_VAR, None):
+        return vlc
+
     if platform.system() == "Windows":
-        vlc = WINDOWS_DEFAULT_PATH
-    else:
-        vlc = "vlc"
-    return os.environ.get(VLC_ENV_VAR, vlc)
+        if os.path.isfile(WINDOWS_DEFAULT_PATH):
+            return WINDOWS_DEFAULT_PATH
+
+    return "vlc"
 
 
 def ensure_vlc() -> bool:
