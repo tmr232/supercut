@@ -11,9 +11,14 @@ pip install supercut
 ## Dependencies
 
 Supercut depends on both [ffmpeg] and [VLC].
+
 It expects ffmpeg to be present in the path.
+
 VLC can either be in the path, or defined via the `SUPERCUT_VLC_PATH` environment variable.
 On Windows, the default installation path (`C:\Program Files\VideoLAN\VLC\vlc.exe`) is the default.
+
+[ffmpeg]: https://ffmpeg.org/
+[VLC]: https://www.videolan.org/
 
 ## Usage
 
