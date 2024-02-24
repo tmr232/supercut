@@ -1,0 +1,11 @@
+Cut {
+    layout: horizontal;
+}
+
+Cut Checkbox {
+    height: 1;
+}
+
+.disabled SubtitleDisplay {
+    text-style: strike;
+}
