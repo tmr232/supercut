@@ -119,7 +119,6 @@ class SupercutApp(App):
 
     def action_preview_all(self):
         list_view = self.query_one(EditableLineView)
-        log(list_view.state)
 
         cuts = [self.cuts[index] for index, enabled in list_view.state if enabled]
         vlc_clips = []
@@ -129,4 +128,8 @@ class SupercutApp(App):
         vlc.view_playlist(playlist)
 
     def action_preview_one(self):
-        pass
+        list_view = self.query_one(EditableLineView)
+
+        cut = self.cuts[list_view.state[list_view.index][0]]
+        playlist = vlc.make_playlist([cut.to_vlc()])
+        vlc.view_playlist(playlist)
