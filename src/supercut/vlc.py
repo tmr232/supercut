@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 import os
 import platform
 import subprocess
@@ -6,6 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Iterator
 
+import attrs
 import rich
 
 WINDOWS_DEFAULT_PATH = r"C:\Program Files\VideoLAN\VLC\vlc.exe"
@@ -56,7 +58,6 @@ def create_supercut_playlist(
 
     return "\n".join(lines)
 
-
 def view_playlist(playlist: str):
     with tempfile.TemporaryDirectory() as tempdir:
         playlist_file = Path(tempdir) / "playlist.m3u8"
@@ -89,3 +90,28 @@ def supercut_playlist(
         subprocess.check_call(
             [get_vlc(), "--fullscreen", "--no-osd", str(output_path), "vlc://quit"]
         )
+
+
+@attrs.frozen
+class Clip:
+    video:Path
+    #: Start time in ms
+    start: int
+    #: End time in ms
+    end: int
+
+    language: str|None=None
+
+    @property
+    def playlist_lines(self)->list[str]:
+        lines = []
+        lines.append(f"#EXTVLCOPT:start-time={self.start / 1000}")
+        lines.append(f"#EXTVLCOPT:stop-time={self.end / 1000}")
+        if self.language:
+            lines.append(f"#EXTVLCOPT:sub-language={self.language}")
+        lines.append(str(self.video.absolute()))
+        return lines
+
+
+def make_playlist(clips:list[Clip])->str:
+    return "\n".join(itertools.chain(*(clip.playlist_lines for clip in clips)))

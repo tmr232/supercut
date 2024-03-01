@@ -3,7 +3,6 @@ import operator
 import sys
 import typing
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -16,6 +15,7 @@ import rich.table
 import typer
 
 from supercut import ffmpeg, vlc
+from supercut.tui import SupercutApp
 
 app = typer.Typer(
     help="Subtitle-based automatic supercut generator",
@@ -127,20 +127,52 @@ def preview(
     """
     Quick preview using VLC
     """
-    videos = sorted(videos)
-    playlists = []
+    cuts = calculate_cuts(videos=videos, query=query, language=language, name=name, cache_dir=cache_dir)
+    vlc_clips = []
+    for cut in cuts:
+        vlc_clips.append(cut.to_vlc())
+    playlist = vlc.make_playlist(vlc_clips)
+    vlc.view_playlist(playlist)
+
+
+
+@attrs.define
+class Cut:
+    #: The path the video to be cut
+    video: Path
+
+    #: The subtitles for the video (uncut)
+    subs: pysubs2.SSAFile
+
+    #: The subtitle event used to generate this cut
+    event: pysubs2.SSAEvent
+
+    def to_ffmpeg(self)->ffmpeg.VideoPart:
+        return ffmpeg.VideoPart(
+            video=self.video,
+            subs=trim_subs(self.subs, self.event.start, self.event.end).to_string("ass"),
+            start=self.event.start,
+            end=self.event.end,
+        )
+
+    def to_vlc(self)->vlc.Clip:
+        return vlc.Clip(video=self.video, start=self.event.start, end=self.event.end)
+
+def calculate_cuts(videos:list[Path], query: str, language:str="eng", name:str|None=None,cache_dir:Path|None=None)->list[Cut]:
+    cuts = []
     with Core.from_dir(cache_dir) as core:
-        with ThreadPoolExecutor() as executor:
-            subs = executor.map(lambda video: core.get_subs(video, language), videos)
-        for video, subs in zip(videos, subs):
-            sections = get_sections(subs, query=query, name=name)
-            playlist = vlc.create_supercut_playlist(video, sections)
-            playlists.append(playlist)
+        for video in videos:
+            subs = core.get_subs(video, language)
+            events = query_events(subs, query, name=name)
+            for event in events:
+                cut = Cut(
+                    video=video,
+                    subs=subs,
+                    event=event,
+                )
+                cuts.append(cut)
 
-        full_playlist = "\n".join(playlists)
-        vlc.view_playlist(full_playlist)
-
-
+    return cuts
 @app.command()
 def render(
     videos: typing.Annotated[
@@ -162,22 +194,29 @@ def render(
     """
     Render supercut
     """
-    with Core.from_dir(cache_dir) as core:
-        video_parts = []
-        for video in videos:
-            subs = core.get_subs(video, language)
-            events = query_events(subs, query, name=name)
-            for event in events:
-                part = ffmpeg.VideoPart(
-                    video=video,
-                    subs=trim_subs(subs, event.start, event.end).to_string("ass"),
-                    start=event.start,
-                    end=event.end,
-                )
-                video_parts.append(part)
+    cuts =calculate_cuts(videos=videos,query=query,language=language,name=name,cache_dir=cache_dir)
+    ffmpeg.supercut_free([cut.to_ffmpeg() for cut in cuts], output=output)
 
-        ffmpeg.supercut_free(video_parts, output=output)
-
+@app.command()
+def tui(
+        videos: typing.Annotated[
+            list[Path], typer.Argument(help="The videos to supercut, in order.")
+        ],
+        query: typing.Annotated[str, typer.Option(help="String to search in subtitles")],
+        language: typing.Annotated[
+            str, typer.Option(help="Subtitle language to use")
+        ] = "eng",
+        name: typing.Annotated[
+            Optional[str], typer.Option(help="Name of the speaker.")
+        ] = None,
+        cache_dir: typing.Annotated[
+            Optional[Path],
+            typer.Option(help="Cache directory location. Speeds up repeated runs."),
+        ] = None,
+):
+    cuts =calculate_cuts(videos=videos,query=query,language=language,name=name,cache_dir=cache_dir)
+    app = SupercutApp(cuts=cuts)
+    app.run()
 
 @app.command(name="list")
 def list_subs(
