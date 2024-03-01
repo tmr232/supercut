@@ -1,3 +1,5 @@
+import subprocess
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.reactive import reactive
@@ -130,5 +132,7 @@ class SupercutApp(App):
         list_view = self.query_one(EditableLineView)
 
         cut = self.cuts[list_view.state[list_view.index][0]]
+
         playlist = vlc.make_playlist([cut.to_vlc()])
         vlc.view_playlist(playlist)
+
