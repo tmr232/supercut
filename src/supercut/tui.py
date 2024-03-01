@@ -1,11 +1,7 @@
-from typing import Type
-
-from textual.app import App, ComposeResult, CSSPathType
+from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.driver import Driver
 from textual.reactive import reactive
 from textual.widgets import Footer, Header, ListItem, ListView, Static
-from textual import log
 
 from supercut import subs, vlc
 
@@ -42,10 +38,11 @@ class EditableLineView(ListView):
         self.indices = list(range(len(lines)))
 
     @property
-    def state(self)->list[tuple[int, bool]]:
+    def state(self) -> list[tuple[int, bool]]:
         def _iter():
             for index, item in zip(self.indices, self.query(Cut).nodes):
                 yield index, item.enabled
+
         return list(_iter())
 
     def move_up(self):
@@ -88,8 +85,8 @@ class SupercutApp(App):
         Binding(key="space", action="toggle_enabled", description="Enable/Disable"),
         Binding(key="ctrl+up", action="move_up", description="Move Up"),
         Binding(key="ctrl+down", action="move_down", description="Move Down"),
-        Binding(key="p", action="preview_one",description="Preview Selected"),
-        Binding(key="ctrl+p", action="preview_all",description="Preview All"),
+        Binding(key="p", action="preview_one", description="Preview Selected"),
+        Binding(key="ctrl+p", action="preview_all", description="Preview All"),
     ]
 
     def __init__(
@@ -98,7 +95,9 @@ class SupercutApp(App):
     ):
         super().__init__()
         self.cuts = cuts
-        self.lines = [f"{i:-4} | {subs.format_event(cut.event)}" for i, cut in enumerate(cuts)]
+        self.lines = [
+            f"{i:-4} | {subs.format_event(cut.event)}" for i, cut in enumerate(cuts)
+        ]
 
     def compose(self) -> ComposeResult:
         yield Header()

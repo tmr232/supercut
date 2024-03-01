@@ -127,13 +127,14 @@ def preview(
     """
     Quick preview using VLC
     """
-    cuts = calculate_cuts(videos=videos, query=query, language=language, name=name, cache_dir=cache_dir)
+    cuts = calculate_cuts(
+        videos=videos, query=query, language=language, name=name, cache_dir=cache_dir
+    )
     vlc_clips = []
     for cut in cuts:
         vlc_clips.append(cut.to_vlc())
     playlist = vlc.make_playlist(vlc_clips)
     vlc.view_playlist(playlist)
-
 
 
 @attrs.define
@@ -147,18 +148,27 @@ class Cut:
     #: The subtitle event used to generate this cut
     event: pysubs2.SSAEvent
 
-    def to_ffmpeg(self)->ffmpeg.VideoPart:
+    def to_ffmpeg(self) -> ffmpeg.VideoPart:
         return ffmpeg.VideoPart(
             video=self.video,
-            subs=trim_subs(self.subs, self.event.start, self.event.end).to_string("ass"),
+            subs=trim_subs(self.subs, self.event.start, self.event.end).to_string(
+                "ass"
+            ),
             start=self.event.start,
             end=self.event.end,
         )
 
-    def to_vlc(self)->vlc.Clip:
+    def to_vlc(self) -> vlc.Clip:
         return vlc.Clip(video=self.video, start=self.event.start, end=self.event.end)
 
-def calculate_cuts(videos:list[Path], query: str, language:str="eng", name:str|None=None,cache_dir:Path|None=None)->list[Cut]:
+
+def calculate_cuts(
+    videos: list[Path],
+    query: str,
+    language: str = "eng",
+    name: str | None = None,
+    cache_dir: Path | None = None,
+) -> list[Cut]:
     cuts = []
     with Core.from_dir(cache_dir) as core:
         for video in videos:
@@ -173,6 +183,8 @@ def calculate_cuts(videos:list[Path], query: str, language:str="eng", name:str|N
                 cuts.append(cut)
 
     return cuts
+
+
 @app.command()
 def render(
     videos: typing.Annotated[
@@ -194,29 +206,35 @@ def render(
     """
     Render supercut
     """
-    cuts =calculate_cuts(videos=videos,query=query,language=language,name=name,cache_dir=cache_dir)
+    cuts = calculate_cuts(
+        videos=videos, query=query, language=language, name=name, cache_dir=cache_dir
+    )
     ffmpeg.supercut_free([cut.to_ffmpeg() for cut in cuts], output=output)
+
 
 @app.command()
 def tui(
-        videos: typing.Annotated[
-            list[Path], typer.Argument(help="The videos to supercut, in order.")
-        ],
-        query: typing.Annotated[str, typer.Option(help="String to search in subtitles")],
-        language: typing.Annotated[
-            str, typer.Option(help="Subtitle language to use")
-        ] = "eng",
-        name: typing.Annotated[
-            Optional[str], typer.Option(help="Name of the speaker.")
-        ] = None,
-        cache_dir: typing.Annotated[
-            Optional[Path],
-            typer.Option(help="Cache directory location. Speeds up repeated runs."),
-        ] = None,
+    videos: typing.Annotated[
+        list[Path], typer.Argument(help="The videos to supercut, in order.")
+    ],
+    query: typing.Annotated[str, typer.Option(help="String to search in subtitles")],
+    language: typing.Annotated[
+        str, typer.Option(help="Subtitle language to use")
+    ] = "eng",
+    name: typing.Annotated[
+        Optional[str], typer.Option(help="Name of the speaker.")
+    ] = None,
+    cache_dir: typing.Annotated[
+        Optional[Path],
+        typer.Option(help="Cache directory location. Speeds up repeated runs."),
+    ] = None,
 ):
-    cuts =calculate_cuts(videos=videos,query=query,language=language,name=name,cache_dir=cache_dir)
+    cuts = calculate_cuts(
+        videos=videos, query=query, language=language, name=name, cache_dir=cache_dir
+    )
     app = SupercutApp(cuts=cuts)
     app.run()
+
 
 @app.command(name="list")
 def list_subs(

@@ -58,6 +58,7 @@ def create_supercut_playlist(
 
     return "\n".join(lines)
 
+
 def view_playlist(playlist: str):
     with tempfile.TemporaryDirectory() as tempdir:
         playlist_file = Path(tempdir) / "playlist.m3u8"
@@ -94,16 +95,16 @@ def supercut_playlist(
 
 @attrs.frozen
 class Clip:
-    video:Path
+    video: Path
     #: Start time in ms
     start: int
     #: End time in ms
     end: int
 
-    language: str|None=None
+    language: str | None = None
 
     @property
-    def playlist_lines(self)->list[str]:
+    def playlist_lines(self) -> list[str]:
         lines = []
         lines.append(f"#EXTVLCOPT:start-time={self.start / 1000}")
         lines.append(f"#EXTVLCOPT:stop-time={self.end / 1000}")
@@ -113,5 +114,5 @@ class Clip:
         return lines
 
 
-def make_playlist(clips:list[Clip])->str:
+def make_playlist(clips: list[Clip]) -> str:
     return "\n".join(itertools.chain(*(clip.playlist_lines for clip in clips)))
