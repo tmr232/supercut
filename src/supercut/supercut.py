@@ -16,6 +16,7 @@ import rich.table
 import typer
 
 from supercut import ffmpeg, vlc
+from supercut.subtitles import get_external_subs
 
 app = typer.Typer(
     help="Subtitle-based automatic supercut generator",
@@ -195,11 +196,19 @@ def list_subs(
         Optional[Path],
         typer.Option(help="Cache directory location. Speeds up repeated runs."),
     ] = None,
+    external_subs: typing.Annotated[
+        bool, typer.Option(help="Search for external subs.")
+    ] = False,
 ):
     """Show all subs that match the query and name"""
     with Core.from_dir(cache_dir) as core:
+        if external_subs:
+            get_subs = get_external_subs
+        else:
+            get_subs = core.get_subs
+
         events = more_itertools.flatten(
-            query_events(core.get_subs(video, language), query, name=name)
+            query_events(get_subs(video, language), query, name=name)
             for video in videos
         )
 
