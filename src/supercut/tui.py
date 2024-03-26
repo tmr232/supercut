@@ -1,10 +1,12 @@
 import subprocess
+from pathlib import Path
 
+from textual import log
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.widgets import Footer, Header, ListItem, ListView, Static
-
+from textual_fspicker import FileSave, Filters
 from supercut import subs, vlc
 
 
@@ -89,6 +91,8 @@ class SupercutApp(App):
         Binding(key="ctrl+down", action="move_down", description="Move Down"),
         Binding(key="p", action="preview_one", description="Preview Selected"),
         Binding(key="ctrl+p", action="preview_all", description="Preview All"),
+        Binding(key="r", action="render_one", description="Render Selected"),
+        Binding(key="ctrl+r", action="render_all", description="Render"),
     ]
 
     def __init__(
@@ -136,3 +140,14 @@ class SupercutApp(App):
         playlist = vlc.make_playlist([cut.to_vlc()])
         vlc.view_playlist(playlist)
 
+    def action_render_one(self):
+        self.push_screen(
+            FileSave(title="Render Selected To")
+        )
+
+
+    def show_selected(self, file:Path|None):
+        list_view = self.query_one(EditableLineView)
+        list_view.append(ListItem(Static(str(file))))
+    def action_render_all(self):
+        self.push_screen(FileSave(title="Render To", can_overwrite=False, filters=Filters(("MKV", lambda p: p.suffix.lower() == ".mkv"))), callback=self.show_selected)

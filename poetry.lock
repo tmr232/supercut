@@ -978,6 +978,19 @@ textual = ">=0.36.0"
 typing-extensions = ">=4.4.0,<5.0.0"
 
 [[package]]
+name = "textual-fspicker"
+version = "0.0.10"
+description = "A simple Textual filesystem picker dialog library."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "textual_fspicker-0.0.10-py3-none-any.whl", hash = "sha256:03a4ea8eb9384e63002a857d288ec6b9e8f67282d439d166a090be256e9ccc8b"},
+]
+
+[package.dependencies]
+textual = ">=0.31.0"
+
+[[package]]
 name = "typer"
 version = "0.9.0"
 description = "Typer, build great CLIs. Easy to code. Based on Python type hints."
@@ -1149,4 +1162,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "d7257ce6e48edcf2755e80d84118715badc4ca575dde3d6401a5fb5d18efeab5"
+content-hash = "d6080f6ea963ff96e8fb0d40fdf18c4a57b8bb517b50ef08576155f6719eb5c8"

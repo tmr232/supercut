@@ -23,6 +23,7 @@ rich = "^13.7.0"
 more-itertools = "^10.2.0"
 diskcache = "^5.6.3"
 textual = "^0.52.1"
+textual-fspicker = "^0.0.10"
 
 
 [tool.poetry.group.dev.dependencies]
