@@ -1,9 +1,11 @@
 from pathlib import Path
 
-import pysubs2
+import pysubs2  # type: ignore[import-untyped]
 
-def _is_sdh(subs:Path)->bool:
+
+def _is_sdh(subs: Path) -> bool:
     return "[SDH]" in str(subs)
+
 
 def _find_in_subs_dir(video: Path, language: str) -> Path | None:
     subs_dir = video.parent / "Subs"
@@ -11,7 +13,17 @@ def _find_in_subs_dir(video: Path, language: str) -> Path | None:
         return None
 
     # Use sorting to prefer non-SDH subs
-    return next(iter(sorted(subs_dir.glob(f"*.{language}.srt"), key=_is_sdh, reverse=True)), None)
+    return next(
+        iter(
+            sorted(
+                subs_dir.glob(f"*.{language}.srt"),
+                # For some reason, mypy thinks we can get a `None` value from the glob.
+                key=_is_sdh,  # type: ignore[arg-type]
+                reverse=True,
+            )
+        ),
+        None,
+    )
 
 
 def find_srt_subs_for(video: Path, language: str = "eng") -> Path | None:
@@ -23,10 +35,10 @@ def find_srt_subs_for(video: Path, language: str = "eng") -> Path | None:
 
     return None
 
-def get_external_subs(video:Path, language:str= "eng")->pysubs2.SSAFile:
+
+def get_external_subs(video: Path, language: str = "eng") -> pysubs2.SSAFile:
     subs_path = find_srt_subs_for(video, language=language)
     if not subs_path:
         raise RuntimeError(f"Failed to find subs for {video}")
 
     return pysubs2.load(str(subs_path))
-

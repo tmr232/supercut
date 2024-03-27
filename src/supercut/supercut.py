@@ -4,6 +4,7 @@ import sys
 import typing
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
@@ -31,14 +32,19 @@ app.add_typer(edit_app, name="edit")
 @attrs.define
 class Core:
     _cache: diskcache.Cache
+    _external_subs: bool
 
     @classmethod
-    def from_dir(cls, cache_dir: Path | None) -> "Core":
+    def from_dir(cls, cache_dir: Path | None, external_subs: bool = False) -> "Core":
         return Core(
-            cache=diskcache.Cache(str(cache_dir) if cache_dir is not None else None)
+            cache=diskcache.Cache(str(cache_dir) if cache_dir is not None else None),
+            external_subs=external_subs,
         )
 
     def get_subs(self, video: Path, language: str) -> pysubs2.SSAFile:
+        if self._external_subs:
+            return get_external_subs(video, language)
+
         @self._cache.memoize(tag="raw_subs")
         def _get_raw_subs(video_, language_):
             return ffmpeg.extract_subs_by_language(
@@ -72,7 +78,7 @@ def query_events(subs: pysubs2.SSAFile, query: str, *, name: str | None = None):
 
 
 def copy_subs(subs: pysubs2.SSAFile) -> pysubs2.SSAFile:
-    return pysubs2.SSAFile.from_string(subs.to_string("ass"))
+    return deepcopy(subs)
 
 
 def trim_subs(subs: pysubs2.SSAFile, start: int, end: int) -> pysubs2.SSAFile:
@@ -124,13 +130,16 @@ def preview(
         Optional[Path],
         typer.Option(help="Cache directory location. Speeds up repeated runs."),
     ] = None,
+    external_subs: typing.Annotated[
+        bool, typer.Option(help="Search for external subs.")
+    ] = False,
 ):
     """
     Quick preview using VLC
     """
     videos = sorted(videos)
     playlists = []
-    with Core.from_dir(cache_dir) as core:
+    with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         with ThreadPoolExecutor() as executor:
             subs = executor.map(lambda video: core.get_subs(video, language), videos)
         for video, subs in zip(videos, subs):
@@ -159,16 +168,20 @@ def render(
         Optional[Path],
         typer.Option(help="Cache directory location. Speeds up repeated runs."),
     ] = None,
+    external_subs: typing.Annotated[
+        bool, typer.Option(help="Search for external subs.")
+    ] = False,
 ):
     """
     Render supercut
     """
-    with Core.from_dir(cache_dir) as core:
+    with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         video_parts = []
         for video in videos:
             subs = core.get_subs(video, language)
             events = query_events(subs, query, name=name)
             for event in events:
+                print(event.start, event.end, event)
                 part = ffmpeg.VideoPart(
                     video=video,
                     subs=trim_subs(subs, event.start, event.end).to_string("ass"),
@@ -201,14 +214,9 @@ def list_subs(
     ] = False,
 ):
     """Show all subs that match the query and name"""
-    with Core.from_dir(cache_dir) as core:
-        if external_subs:
-            get_subs = get_external_subs
-        else:
-            get_subs = core.get_subs
-
+    with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         events = more_itertools.flatten(
-            query_events(get_subs(video, language), query, name=name)
+            query_events(core.get_subs(video, language), query, name=name)
             for video in videos
         )
 
@@ -232,11 +240,14 @@ def list_names(
         Optional[Path],
         typer.Option(help="Cache directory location. Speeds up repeated runs."),
     ] = None,
+    external_subs: typing.Annotated[
+        bool, typer.Option(help="Search for external subs.")
+    ] = False,
 ):
     """Show all speaker names in the subtitles"""
     names: defaultdict[str, int] = defaultdict(int)
 
-    with Core.from_dir(cache_dir) as core:
+    with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         for video in videos:
             subs = core.get_subs(video, language)
             events = query_events(subs, query)
@@ -276,12 +287,15 @@ def edit_create(
         Optional[Path],
         typer.Option(help="Cache directory location. Speeds up repeated runs."),
     ] = None,
+    external_subs: typing.Annotated[
+        bool, typer.Option(help="Search for external subs.")
+    ] = False,
 ):
     """
     Create edit list
     """
 
-    with Core.from_dir(cache_dir) as core:
+    with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         events = more_itertools.flatten(
             query_events(core.get_subs(video, language), query, name=name)
             for video in videos
@@ -327,6 +341,9 @@ def edit_preview(
         Optional[Path],
         typer.Option(help="Cache directory location. Speeds up repeated runs."),
     ] = None,
+    external_subs: typing.Annotated[
+        bool, typer.Option(help="Search for external subs.")
+    ] = False,
 ):
     """
     Preview supercut based on edit list
@@ -334,7 +351,7 @@ def edit_preview(
     new_order = parse_list(listfile)
 
     playlist = []
-    with Core.from_dir(cache_dir) as core:
+    with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         video_parts = []
         for video in videos:
             subs = core.get_subs(video, language)
@@ -374,13 +391,16 @@ def edit_render(
         Optional[Path],
         typer.Option(help="Cache directory location. Speeds up repeated runs."),
     ] = None,
+    external_subs: typing.Annotated[
+        bool, typer.Option(help="Search for external subs.")
+    ] = False,
 ):
     """
     Render supercut based on edit list.
     """
     new_order = parse_list(listfile)
 
-    with Core.from_dir(cache_dir) as core:
+    with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         video_parts = []
         for video in videos:
             subs = core.get_subs(video, language)
