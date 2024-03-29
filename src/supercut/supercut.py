@@ -54,9 +54,11 @@ class Core:
         return pysubs2.SSAFile.from_string(_get_raw_subs(video, language))
 
     def __enter__(self):
+        self._cache.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self._cache.__exit__(None, None, None)
         return False
 
 
