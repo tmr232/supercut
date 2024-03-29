@@ -1,11 +1,15 @@
 import json
 import operator
+import socket
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
+from typing import Iterator
 
 import attrs
 import pysubs2  # type: ignore[import-untyped]
+import rich.progress
 
 
 def ensure_ffmpeg() -> bool:
@@ -219,3 +223,52 @@ def cleanup_subs(video: Path, output: Path):
         new_subs = Path(tempdir) / "new_subs.ssa"
         subs.save(str(new_subs))
         replace_subs(video, new_subs, output)
+
+
+def ffmpeg_progress(args:list[str]):
+    with socket.socket() as server:
+        server.bind(("localhost",0))
+        server.listen(1)
+        host, port = server.getsockname()
+
+        result:subprocess.CompletedProcess|None = None
+
+        def run_process():
+            nonlocal result
+            result = subprocess.run(["ffmpeg", '-progress', f"tcp://{host}:{port}"] + args, capture_output=True)
+
+        thread = threading.Thread(target=run_process)
+        thread.start()
+
+        try:
+            conn, addr = server.accept()
+
+            with conn:
+                # for progress in recv_progress(conn):
+                #     print(progress)
+                for _ in rich.progress.track(recv_progress(conn), ):pass
+        finally:
+            thread.join(timeout=1)
+
+        print(result.stderr)
+
+def recv_progress(conn:socket)->Iterator[dict]:
+    for data in iter(lambda: conn.recv(1024), b""):
+        yield parse_progress(data)
+def parse_progress(progress:bytes)->dict:
+    raw_values = dict(line.split(b"=") for line in progress.splitlines())
+    # There are more fields, but we ignore them.
+    # Also, it seems that `out_time_ms` yields th same values as `out_time_us`,
+    # and both are microseconds and not milliseconds.
+    return dict(
+        frame=int(raw_values[b'frame'].strip()),
+        out_time_us=int(raw_values[b'out_time_us'].strip()),
+        progress=raw_values[b'progress'].strip()
+    )
+
+def main():
+    ffmpeg_progress(['-i', r"C:\Temp\beekeeper.mkv", r"C:\Temp\beekeeper8.mp4"])
+
+
+if __name__ == "__main__":
+    main()
