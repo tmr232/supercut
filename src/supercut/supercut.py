@@ -215,6 +215,7 @@ def list_subs(
     ] = False,
 ):
     """Show all subs that match the query and name"""
+    videos = sorted(videos)
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         events = more_itertools.flatten(
             query_events(core.get_subs(video, language), query, name=name)
@@ -295,7 +296,7 @@ def edit_create(
     """
     Create edit list
     """
-
+    videos = sorted(videos)
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         events = more_itertools.flatten(
             query_events(core.get_subs(video, language), query, name=name)
@@ -349,6 +350,7 @@ def edit_preview(
     """
     Preview supercut based on edit list
     """
+    videos = sorted(videos)
     new_order = parse_list(listfile)
 
     playlist = []
@@ -399,6 +401,7 @@ def edit_render(
     """
     Render supercut based on edit list.
     """
+    videos = sorted(videos)
     new_order = parse_list(listfile)
 
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
