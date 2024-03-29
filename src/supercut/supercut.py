@@ -108,7 +108,7 @@ def trim_subs(subs: pysubs2.SSAFile, start: int, end: int) -> pysubs2.SSAFile:
         return event
 
     subs.events = [
-        squeeze_event(offset_event(event, -start), 0, start)
+        squeeze_event(offset_event(event, -start), 0, end - start)
         for event in subs.events
         if is_in_range(event, start, end)
     ]
