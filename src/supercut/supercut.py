@@ -177,6 +177,7 @@ def render(
     """
     Render supercut
     """
+    videos = sorted(videos)
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         video_parts = []
         for video in videos:
