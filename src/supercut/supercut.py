@@ -183,7 +183,6 @@ def render(
             subs = core.get_subs(video, language)
             events = query_events(subs, query, name=name)
             for event in events:
-                print(event.start, event.end, event)
                 part = ffmpeg.VideoPart(
                     video=video,
                     subs=trim_subs(subs, event.start, event.end).to_string("ass"),
