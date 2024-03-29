@@ -319,7 +319,7 @@ def parse_list(listfile: Path) -> list[int]:
     for line in listfile.read_text().splitlines():
         if not line:
             continue
-        if line.startswith("#"):
+        if line.lstrip().startswith("#"):
             continue
         indices.append(int(line.lstrip().partition(" ")[0]))
 
