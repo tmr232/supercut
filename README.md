@@ -134,4 +134,7 @@ supercut edit preview --cache-dir ./workdir "Sousou No Frieren 01.mkv" "Sousou N
 
 ## Supported Formats
 
-At the moment, only `.mkv` files with subtitle tracks are supported.
+At the moment, the only export format is `.mkv`.
+
+As for input, all ffmpeg-supported formats should be supported.
+To read subs stored externally (a `.srt` file, for example) use the `--external-subs` flag.
