@@ -1,3 +1,4 @@
+import concurrent.futures
 import contextlib
 import functools
 import json
@@ -390,23 +391,24 @@ def ffmpeg_progress_iterator(
         progress_queue: queue.SimpleQueue[_T | None] = queue.SimpleQueue()
 
         def advance():
-            conn, addr = server.accept()
+            try:
+                conn, _addr = server.accept()
 
-            with conn:
-                for step_progress in recv_progress(conn):
-                    progress_queue.put(progress_converter(step_progress[progress_key]))
+                with conn:
+                    for step_progress in recv_progress(conn):
+                        progress_queue.put(
+                            progress_converter(step_progress[progress_key])
+                        )
+                        raise RuntimeError()
+            finally:
                 progress_queue.put(None)
 
-        try:
-            advance_thread = threading.Thread(target=advance)
-            ffmpeg_thread = threading.Thread(target=run_ffmpeg)
-            # Start waiting for a connection
-            advance_thread.start()
-            # Start ffmpeg
-            ffmpeg_thread.start()
+        # We're using a ThreadPoolExecutor for an easy way to get the exceptions in the main thread.
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            advance_future = executor.submit(advance)
+            ffmpeg_future = executor.submit(run_ffmpeg)
 
             yield from iter(progress_queue.get, None)
 
-        finally:
-            ffmpeg_thread.join(1)
-            advance_thread.join(1)
+            ffmpeg_future.result()
+            advance_future.result()
