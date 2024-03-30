@@ -443,6 +443,7 @@ def hardcode_subs(
     video: typing.Annotated[Path, typer.Argument(help="The video to hardcode subs in")],
     output: typing.Annotated[Path, typer.Option(help="Ouptut file")],
 ):
+    """Hardcode the subtitles into the video frames."""
     ffmpeg.hardcode_subs(video, output=output)
 
 
