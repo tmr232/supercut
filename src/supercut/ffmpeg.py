@@ -260,6 +260,8 @@ def ffmpeg_progress(args: list[str], description:str|None=None):
 
 
         def run_ffmpeg():
+            # We run in a thread, as we need to keep reading the output to avoid
+            # blocking the pipe.
             subprocess.run(["ffmpeg", "-progress", f"tcp://{host}:{port}"] + args,
                                    capture_output=True)
 
