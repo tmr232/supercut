@@ -6,7 +6,6 @@ import socket
 import subprocess
 import tempfile
 import threading
-import time
 from pathlib import Path
 from typing import Iterator
 
@@ -24,16 +23,19 @@ def ensure_ffmpeg() -> bool:
         return False
 
 
-def ffmpeg(f):
-    context_manager = contextlib.contextmanager(f)
+def ffmpeg(description: str | None = None):
+    def decorator(f):
+        context_manager = contextlib.contextmanager(f)
 
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        print(f"Running {f.__name__}")
-        with context_manager(*args, **kwargs) as args:
-            # return subprocess.run(["ffmpeg", *args], capture_output=True, check=True)
-            ffmpeg_progress(args, description=f.__name__)
-    return wrapper
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            print(f"Running {f.__name__}")
+            with context_manager(*args, **kwargs) as args:
+                ffmpeg_progress(args, description=description)
+
+        return wrapper
+
+    return decorator
 
 
 def get_subtitle_stream_id(video: Path, language: str = "eng") -> int:
@@ -108,7 +110,7 @@ def extract_subs_by_language(video: Path, language: str = "eng", fmt="ass") -> b
     return raw_subs
 
 
-@ffmpeg
+@ffmpeg()
 def concat_videos(videos: list[Path], output: Path):
     concat_list = (f"file '{video.absolute()!s}'" for video in videos)
     concat_text = "\n".join(concat_list)
@@ -131,7 +133,7 @@ def validate_video(video: Path):
     subprocess.run(["ffprobe", str(video)], capture_output=True, check=True)
 
 
-@ffmpeg
+@ffmpeg()
 def trim_video(video: Path, start: int, end: int, output: Path):
     filter_command = (
         f"[0:v]trim={0}:{end - start}ms,setpts=PTS-STARTPTS[video];"
@@ -155,7 +157,7 @@ def trim_video(video: Path, start: int, end: int, output: Path):
     yield cmd
 
 
-@ffmpeg
+@ffmpeg()
 def add_subs(video: Path, subs: Path, output: Path):
     # Then add the subs to the video
     yield [
@@ -180,7 +182,7 @@ def add_subs_from_string(video: Path, subs: str, output: Path):
         add_subs(video, subs_file, output)
 
 
-@ffmpeg
+@ffmpeg()
 def replace_subs(video, subs, output):
     # Then add the subs to the video
     yield [
@@ -244,7 +246,7 @@ def cleanup_subs(video: Path, output: Path):
         replace_subs(video, new_subs, output)
 
 
-@ffmpeg
+@ffmpeg()
 def hardcode_subs(video: Path, output: Path):
     abs_video = video.absolute()
     abs_output = output.absolute()
@@ -252,18 +254,19 @@ def hardcode_subs(video: Path, output: Path):
         yield ["-i", str(abs_video), "-vf", f"subtitles={video.name}", str(abs_output)]
 
 
-def ffmpeg_progress(args: list[str], description:str|None=None):
+def ffmpeg_progress(args: list[str], description: str | None = None):
     with socket.socket() as server:
         server.bind(("localhost", 0))
         server.listen(1)
         host, port = server.getsockname()
 
-
         def run_ffmpeg():
             # We run in a thread, as we need to keep reading the output to avoid
             # blocking the pipe.
-            subprocess.run(["ffmpeg", "-progress", f"tcp://{host}:{port}"] + args,
-                                   capture_output=True)
+            subprocess.run(
+                ["ffmpeg", "-progress", f"tcp://{host}:{port}"] + args,
+                capture_output=True,
+            )
 
         try:
             ffmpeg_thread = threading.Thread(target=run_ffmpeg)
@@ -272,7 +275,9 @@ def ffmpeg_progress(args: list[str], description:str|None=None):
 
             with conn:
                 columns = [
-                    rich.progress.TextColumn("[progress.description]{task.description}"),
+                    rich.progress.TextColumn(
+                        "[progress.description]{task.description}"
+                    ),
                     rich.progress.BarColumn(),
                     rich.progress.TimeElapsedColumn(),
                 ]
@@ -285,8 +290,6 @@ def ffmpeg_progress(args: list[str], description:str|None=None):
                     progress.update(task, total=100, completed=100)
         finally:
             ffmpeg_thread.join(1)
-
-
 
 
 def recv_progress(conn: socket) -> Iterator[dict]:
@@ -304,11 +307,3 @@ def parse_progress(progress: bytes) -> dict:
         out_time_us=int(raw_values[b"out_time_us"].strip()),
         progress=raw_values[b"progress"].strip(),
     )
-
-
-def main():
-    ffmpeg_progress(["-i", r"C:\Temp\beekeeper.mkv", r"C:\Temp\beekeeper8.mp4"])
-
-
-if __name__ == "__main__":
-    main()
