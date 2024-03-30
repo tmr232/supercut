@@ -51,11 +51,14 @@ def ffmpeg(description: str = ""):
 
             return wrapper
 
-        def as_iterator(key:bytes, converter:typing.Callable[[bytes],_T]):
+        def as_iterator(key: bytes, converter: typing.Callable[[bytes], _T]):
             @functools.wraps(f)
             def wrapper(*args, **kwargs):
                 with context_manager(*args, **kwargs) as args:
-                    yield from ffmpeg_progress_iterator(args, progress_key=key, progress_converter=converter)
+                    yield from ffmpeg_progress_iterator(
+                        args, progress_key=key, progress_converter=converter
+                    )
+
             return wrapper
 
         @functools.wraps(f)
@@ -364,9 +367,9 @@ def parse_progress(progress: bytes) -> dict:
 
 def ffmpeg_progress_iterator(
     args: typing.Iterable[str],
-    progress_key:bytes,
-        progress_converter:typing.Callable[[bytes],_T]
-)->typing.Iterator[_T]:
+    progress_key: bytes,
+    progress_converter: typing.Callable[[bytes], _T],
+) -> typing.Iterator[_T]:
     with socket.socket() as server:
         server.bind(("localhost", 0))
         server.listen(1)
@@ -380,17 +383,18 @@ def ffmpeg_progress_iterator(
                 capture_output=True,
             )
 
+        class _Sentinel:
+            pass
 
+        progress_queue: queue.SimpleQueue[_T | _Sentinel] = queue.SimpleQueue()
 
-        progress_queue = queue.SimpleQueue()
-        progress_sentinel = object()
         def advance():
             conn, addr = server.accept()
 
             with conn:
                 for step_progress in recv_progress(conn):
                     progress_queue.put(progress_converter(step_progress[progress_key]))
-                progress_queue.put(progress_sentinel)
+                progress_queue.put(_Sentinel())
 
         try:
             advance_thread = threading.Thread(target=advance)
@@ -402,7 +406,7 @@ def ffmpeg_progress_iterator(
 
             while 1:
                 progress_value = progress_queue.get()
-                if progress_value is progress_sentinel:
+                if isinstance(progress_value, _Sentinel):
                     break
                 yield progress_value
 
