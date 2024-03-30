@@ -344,7 +344,6 @@ def ffmpeg_progress_iterator(
                         progress_queue.put(
                             progress_converter(step_progress[progress_key])
                         )
-                        raise RuntimeError()
             finally:
                 progress_queue.put(None)
 
