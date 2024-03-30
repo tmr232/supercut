@@ -18,13 +18,6 @@ import rich.progress
 _T = typing.TypeVar("_T")
 
 
-@attrs.frozen(kw_only=True)
-class Total(typing.Generic[_T]):
-    name: bytes
-    total: _T
-    converter: typing.Callable[[str], _T]
-
-
 def ensure_ffmpeg() -> bool:
     try:
         subprocess.check_call(["ffmpeg", "-version"], stdout=subprocess.PIPE)
