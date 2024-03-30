@@ -6,6 +6,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Iterator
 
@@ -257,34 +258,33 @@ def ffmpeg_progress(args: list[str], description:str|None=None):
         server.listen(1)
         host, port = server.getsockname()
 
-        result: subprocess.CompletedProcess | None = None
 
-        def run_process():
-            nonlocal result
-            result = subprocess.run(
-                ["ffmpeg", "-progress", f"tcp://{host}:{port}"] + args,
-                capture_output=True,
-            )
-
-        thread = threading.Thread(target=run_process)
-        thread.start()
+        def run_ffmpeg():
+            subprocess.run(["ffmpeg", "-progress", f"tcp://{host}:{port}"] + args,
+                                   capture_output=True)
 
         try:
+            ffmpeg_thread = threading.Thread(target=run_ffmpeg)
+            ffmpeg_thread.start()
             conn, addr = server.accept()
 
             with conn:
-                # for progress in recv_progress(conn):
-                #     print(progress)
-                for _ in rich.progress.track(
-                    recv_progress(conn),
-                    description=description,
-                    show_speed=False,
-                ):
-                    pass
+                columns = [
+                    rich.progress.TextColumn("[progress.description]{task.description}"),
+                    rich.progress.BarColumn(),
+                    rich.progress.TimeElapsedColumn(),
+                ]
+                # We need to use `Progress` as a context manager here, and cannot use `rich.progress.track`.
+                # Proper cleanup is critical in case of Ctrl-C, otherwise the program hangs.
+                with rich.progress.Progress(*columns) as progress:
+                    task = progress.add_task(description=description, total=None)
+                    for _ in recv_progress(conn):
+                        pass
+                    progress.update(task, total=100, completed=100)
         finally:
-            thread.join(timeout=1)
+            ffmpeg_thread.join(1)
 
-        # print(result.stderr)
+
 
 
 def recv_progress(conn: socket) -> Iterator[dict]:
@@ -298,7 +298,7 @@ def parse_progress(progress: bytes) -> dict:
     # Also, it seems that `out_time_ms` yields th same values as `out_time_us`,
     # and both are microseconds and not milliseconds.
     return dict(
-        frame=int(raw_values[b"frame"].strip()),
+        # frame=int(raw_values[b"frame"].strip()),
         out_time_us=int(raw_values[b"out_time_us"].strip()),
         progress=raw_values[b"progress"].strip(),
     )
