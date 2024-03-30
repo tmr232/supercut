@@ -7,7 +7,6 @@ import queue
 import socket
 import subprocess
 import tempfile
-import threading
 import typing
 from pathlib import Path
 from typing import Iterator
@@ -44,14 +43,6 @@ def ffmpeg(description: str = ""):
 
         context_manager = contextlib.contextmanager(f)
 
-        def with_progress(total: Total | None = None, description: str = description):
-            @functools.wraps(f)
-            def wrapper(*args, **kwargs):
-                with context_manager(*args, **kwargs) as args:
-                    ffmpeg_progress(args, description=description, total=total)
-
-            return wrapper
-
         def as_iterator(key: bytes, converter: typing.Callable[[bytes], _T]):
             @functools.wraps(f)
             def wrapper(*args, **kwargs):
@@ -67,7 +58,6 @@ def ffmpeg(description: str = ""):
             with context_manager(*args, **kwargs) as args:
                 subprocess.run(["ffmpeg", *args], capture_output=True, check=True)
 
-        wrapper.with_progress = with_progress  # type: ignore[attr-defined]
         wrapper.as_iterator = as_iterator  # type: ignore[attr-defined]
 
         return wrapper
@@ -310,51 +300,6 @@ def hardcode_subs(video: Path, output: Path):
     abs_output = output.absolute()
     with contextlib.chdir(video.parent):
         yield ["-i", str(abs_video), "-vf", f"subtitles={video.name}", str(abs_output)]
-
-
-def ffmpeg_progress(
-    args: typing.Iterable[str],
-    description: str = "",
-    total: Total | None = None,
-):
-    progress_total = None
-    if total is not None:
-        progress_total = total.total
-
-    with socket.socket() as server:
-        server.bind(("localhost", 0))
-        server.listen(1)
-        host, port = server.getsockname()
-
-        def run_ffmpeg():
-            # We run in a thread, as we need to keep reading the output to avoid
-            # blocking the pipe.
-            subprocess.run(
-                ["ffmpeg", "-progress", f"tcp://{host}:{port}", *args],
-                capture_output=True,
-            )
-
-        try:
-            ffmpeg_thread = threading.Thread(target=run_ffmpeg)
-            ffmpeg_thread.start()
-            conn, addr = server.accept()
-
-            with conn:
-                # We need to use `Progress` as a context manager here, and cannot use `rich.progress.track`.
-                # Proper cleanup is critical in case of Ctrl-C, otherwise the program hangs.
-                with rich.progress.Progress() as progress_bar:
-                    task = progress_bar.add_task(
-                        description=description, total=progress_total
-                    )
-                    for step_progress in recv_progress(conn):
-                        if total is not None:
-                            progress_bar.update(
-                                task,
-                                completed=total.converter(step_progress[total.name]),
-                            )
-                    progress_bar.update(task, total=100, completed=100)
-        finally:
-            ffmpeg_thread.join(1)
 
 
 def recv_progress(conn: socket.socket) -> Iterator[dict]:
