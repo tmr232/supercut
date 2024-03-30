@@ -324,6 +324,7 @@ def ffmpeg_progress_iterator(
             subprocess.run(
                 ["ffmpeg", "-progress", f"tcp://{host}:{port}", *args],
                 capture_output=True,
+                check=True,
             )
 
         progress_queue: queue.SimpleQueue[_T | None] = queue.SimpleQueue()
