@@ -387,10 +387,7 @@ def ffmpeg_progress_iterator(
                 capture_output=True,
             )
 
-        class _Sentinel:
-            pass
-
-        progress_queue: queue.SimpleQueue[_T | _Sentinel] = queue.SimpleQueue()
+        progress_queue: queue.SimpleQueue[_T | None] = queue.SimpleQueue()
 
         def advance():
             conn, addr = server.accept()
@@ -398,7 +395,7 @@ def ffmpeg_progress_iterator(
             with conn:
                 for step_progress in recv_progress(conn):
                     progress_queue.put(progress_converter(step_progress[progress_key]))
-                progress_queue.put(_Sentinel())
+                progress_queue.put(None)
 
         try:
             advance_thread = threading.Thread(target=advance)
@@ -408,11 +405,7 @@ def ffmpeg_progress_iterator(
             # Start ffmpeg
             ffmpeg_thread.start()
 
-            while 1:
-                progress_value = progress_queue.get()
-                if isinstance(progress_value, _Sentinel):
-                    break
-                yield progress_value
+            yield from iter(progress_queue.get, None)
 
         finally:
             ffmpeg_thread.join(1)
