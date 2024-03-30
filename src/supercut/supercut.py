@@ -28,6 +28,8 @@ edit_app = typer.Typer(
 )
 app.add_typer(edit_app, name="edit")
 
+util_app = typer.Typer(help="Utility commands", pretty_exceptions_show_locals=False)
+app.add_typer(util_app, name="util")
 
 @attrs.define
 class Core:
@@ -422,6 +424,14 @@ def edit_render(
         video_parts = [video_parts[i] for i in new_order]
 
         ffmpeg.supercut_free(video_parts, output=output)
+
+
+@util_app.command()
+def hardcode_subs(
+    video: typing.Annotated[Path, typer.Argument(help="The video to hardcode subs in")],
+    output: typing.Annotated[Path, typer.Option(help="Ouptut file")],
+):
+    ffmpeg.hardcode_subs(video, output=output)
 
 
 @app.command()
