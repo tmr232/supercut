@@ -50,12 +50,20 @@ def ffmpeg(description: str = ""):
 
             return wrapper
 
+        def as_iterator(key:bytes, converter:typing.Callable[[bytes],_T]):
+            @functools.wraps(f)
+            def wrapper(*args, **kwargs):
+                with context_manager(*args, **kwargs) as args:
+                    yield from ffmpeg_progress_iterator(args, progress_key=key, progress_converter=converter)
+            return wrapper
+
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
             with context_manager(*args, **kwargs) as args:
                 subprocess.run(["ffmpeg", *args], capture_output=True, check=True)
 
         wrapper.with_progress = with_progress  # type: ignore[attr-defined]
+        wrapper.as_iterator = as_iterator  # type: ignore[attr-defined]
 
         return wrapper
 
@@ -351,3 +359,62 @@ def parse_progress(progress: bytes) -> dict:
     # It seems that `out_time_ms` yields th same values as `out_time_us`,
     # and both are microseconds and not milliseconds.
     return {key: value.strip() for key, value in raw_values.items()}
+
+
+def ffmpeg_progress_iterator(
+    args: typing.Iterable[str],
+    progress_key:bytes,
+        progress_converter:typing.Callable[[bytes],_T]
+)->typing.Iterator[_T]:
+    with socket.socket() as server:
+        server.bind(("localhost", 0))
+        server.listen(1)
+        host, port = server.getsockname()
+
+        def run_ffmpeg():
+            # We run in a thread, as we need to keep reading the output to avoid
+            # blocking the pipe.
+            subprocess.run(
+                ["ffmpeg", "-progress", f"tcp://{host}:{port}", *args],
+                capture_output=True,
+            )
+
+
+        progress_value:_T|None = None
+        progress_done = False
+        progress_condition = threading.Condition()
+        def advance():
+            conn, addr = server.accept()
+
+            with conn:
+                for step_progress in recv_progress(conn):
+                    with progress_condition:
+                        nonlocal progress_value
+                        progress_value = progress_converter(step_progress[progress_key])
+                        progress_condition.notify()
+                with progress_condition:
+                    nonlocal progress_done
+                    progress_done = True
+                    progress_condition.notify()
+
+        try:
+            advance_thread = threading.Thread(target=advance)
+            ffmpeg_thread = threading.Thread(target=run_ffmpeg)
+            # Start waiting for a connection
+            advance_thread.start()
+            # Start ffmpeg
+            ffmpeg_thread.start()
+
+            while 1:
+                with progress_condition:
+                    while not progress_done and progress_value is None:
+                        progress_condition.wait()
+                    if progress_value is not None:
+                        yield progress_value
+                        progress_value = None
+                    if progress_done:
+                        break
+
+        finally:
+            ffmpeg_thread.join(1)
+            advance_thread.join(1)
