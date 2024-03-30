@@ -2,6 +2,7 @@ import contextlib
 import functools
 import json
 import operator
+import queue
 import socket
 import subprocess
 import tempfile
@@ -380,22 +381,16 @@ def ffmpeg_progress_iterator(
             )
 
 
-        progress_value:_T|None = None
-        progress_done = False
-        progress_condition = threading.Condition()
+
+        progress_queue = queue.SimpleQueue()
+        progress_sentinel = object()
         def advance():
             conn, addr = server.accept()
 
             with conn:
                 for step_progress in recv_progress(conn):
-                    with progress_condition:
-                        nonlocal progress_value
-                        progress_value = progress_converter(step_progress[progress_key])
-                        progress_condition.notify()
-                with progress_condition:
-                    nonlocal progress_done
-                    progress_done = True
-                    progress_condition.notify()
+                    progress_queue.put(progress_converter(step_progress[progress_key]))
+                progress_queue.put(progress_sentinel)
 
         try:
             advance_thread = threading.Thread(target=advance)
@@ -406,14 +401,10 @@ def ffmpeg_progress_iterator(
             ffmpeg_thread.start()
 
             while 1:
-                with progress_condition:
-                    while not progress_done and progress_value is None:
-                        progress_condition.wait()
-                    if progress_value is not None:
-                        yield progress_value
-                        progress_value = None
-                    if progress_done:
-                        break
+                progress_value = progress_queue.get()
+                if progress_value is progress_sentinel:
+                    break
+                yield progress_value
 
         finally:
             ffmpeg_thread.join(1)
