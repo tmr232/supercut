@@ -3,7 +3,6 @@ import operator
 import sys
 import typing
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional
@@ -13,6 +12,7 @@ import diskcache  # type: ignore[import-untyped]
 import more_itertools
 import pysubs2  # type: ignore[import-untyped]
 import rich.console
+import rich.progress
 import rich.table
 import typer
 
@@ -145,15 +145,26 @@ def preview(
     videos = sorted(videos)
     playlists = []
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
-        with ThreadPoolExecutor() as executor:
-            subs = executor.map(lambda video: core.get_subs(video, language), videos)
-        for video, subs in zip(videos, subs):
+        all_subs = get_all_subs(videos, core, language)
+        for video, subs in zip(videos, all_subs):
             sections = get_sections(subs, query=query, name=name)
             playlist = vlc.create_supercut_playlist(video, sections)
             playlists.append(playlist)
 
         full_playlist = "\n".join(playlists)
         vlc.view_playlist(full_playlist)
+
+
+def get_all_subs(
+    videos: list[Path], core: Core, language: str
+) -> list[pysubs2.SSAFile]:
+    subs = []
+    with rich.progress.Progress() as progress:
+        task = progress.add_task("Getting subtitles", total=len(videos))
+        for video in videos:
+            subs.append(core.get_subs(video, language))
+            progress.advance(task)
+    return list(subs)
 
 
 @app.command()
@@ -183,8 +194,8 @@ def render(
     videos = sorted(videos)
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         video_parts = []
-        for video in videos:
-            subs = core.get_subs(video, language)
+        all_subs = get_all_subs(videos, core, language)
+        for video, subs in zip(videos, all_subs):
             events = query_events(subs, query, name=name)
             for event in events:
                 part = ffmpeg.VideoPart(
@@ -221,9 +232,9 @@ def list_subs(
     """Show all subs that match the query and name"""
     videos = sorted(videos)
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
+        all_subs = get_all_subs(videos, core, language)
         events = more_itertools.flatten(
-            query_events(core.get_subs(video, language), query, name=name)
-            for video in videos
+            query_events(subs, query, name=name) for subs in all_subs
         )
 
     for i, event in enumerate(events):
@@ -254,8 +265,8 @@ def list_names(
     names: defaultdict[str, int] = defaultdict(int)
 
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
-        for video in videos:
-            subs = core.get_subs(video, language)
+        all_subs = get_all_subs(videos, core, language)
+        for subs in all_subs:
             events = query_events(subs, query)
             for event in events:
                 names[event.name] += 1
@@ -302,9 +313,9 @@ def edit_create(
     """
     videos = sorted(videos)
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
+        all_subs = get_all_subs(videos, core, language)
         events = more_itertools.flatten(
-            query_events(core.get_subs(video, language), query, name=name)
-            for video in videos
+            query_events(subs, query, name=name) for subs in all_subs
         )
 
     list_text = io.StringIO()
@@ -360,8 +371,8 @@ def edit_preview(
     playlist = []
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         video_parts = []
-        for video in videos:
-            subs = core.get_subs(video, language)
+        all_subs = get_all_subs(videos, core, language)
+        for video, subs in zip(videos, all_subs):
             events = query_events(subs, query, name=name)
             for event in events:
                 part = (video, event.start, event.end)
@@ -410,8 +421,8 @@ def edit_render(
 
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         video_parts = []
-        for video in videos:
-            subs = core.get_subs(video, language)
+        all_subs = get_all_subs(videos, core, language)
+        for video, subs in zip(videos, all_subs):
             events = query_events(subs, query, name=name)
             for event in events:
                 part = ffmpeg.VideoPart(
