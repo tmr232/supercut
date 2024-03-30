@@ -1,3 +1,5 @@
+import contextlib
+import functools
 import json
 import operator
 import socket
@@ -21,16 +23,38 @@ def ensure_ffmpeg() -> bool:
         return False
 
 
+def ffmpeg(f):
+    context_manager = contextlib.contextmanager(f)
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        print(f"Running {f.__name__}")
+        with context_manager(*args, **kwargs) as args:
+            # return subprocess.run(["ffmpeg", *args], capture_output=True, check=True)
+            ffmpeg_progress(args, description=f.__name__)
+    return wrapper
+
+
 def get_subtitle_stream_id(video: Path, language: str = "eng") -> int:
     """
     The subtitle stream index among subtitle streams.
     This ignores non-subtitle streams.
     """
     # First, probe the file to get the right stream
-    probe_text = subprocess.check_output(
-        ["ffprobe", "-print_format", "json", str(video), "-show_streams", "-v", "error"]
+    process = subprocess.run(
+        [
+            "ffprobe",
+            "-print_format",
+            "json",
+            str(video),
+            "-show_streams",
+            "-v",
+            "error",
+        ],
+        capture_output=True,
+        check=True,
     )
-    probe = json.loads(probe_text)
+    probe = json.loads(process.stdout)
 
     subtitle_streams = [
         stream
@@ -83,6 +107,7 @@ def extract_subs_by_language(video: Path, language: str = "eng", fmt="ass") -> b
     return raw_subs
 
 
+@ffmpeg
 def concat_videos(videos: list[Path], output: Path):
     concat_list = (f"file '{video.absolute()!s}'" for video in videos)
     concat_text = "\n".join(concat_list)
@@ -90,31 +115,28 @@ def concat_videos(videos: list[Path], output: Path):
     with tempfile.TemporaryDirectory() as tempdir:
         list_path = Path(tempdir) / "list.txt"
         list_path.write_text(concat_text)
-        subprocess.check_call(
-            [
-                "ffmpeg",
-                "-safe",
-                "0",
-                "-f",
-                "concat",
-                "-i",
-                str(list_path),
-                str(output),
-            ]
-        )
+        yield [
+            "-safe",
+            "0",
+            "-f",
+            "concat",
+            "-i",
+            str(list_path),
+            str(output),
+        ]
 
 
 def validate_video(video: Path):
-    subprocess.check_call(["ffprobe", str(video)])
+    subprocess.run(["ffprobe", str(video)], capture_output=True, check=True)
 
 
+@ffmpeg
 def trim_video(video: Path, start: int, end: int, output: Path):
     filter_command = (
         f"[0:v]trim={0}:{end - start}ms,setpts=PTS-STARTPTS[video];"
         f"[0:a]atrim={0}:{end - start}ms,asetpts=PTS-STARTPTS[audio];"
     )
     cmd = [
-        "ffmpeg",
         "-v",
         "quiet",
         "-ss",
@@ -129,29 +151,27 @@ def trim_video(video: Path, start: int, end: int, output: Path):
         "[audio]",
         str(output),
     ]
-    subprocess.check_call(cmd)
+    yield cmd
 
 
+@ffmpeg
 def add_subs(video: Path, subs: Path, output: Path):
     # Then add the subs to the video
-    subprocess.check_call(
-        [
-            "ffmpeg",
-            "-i",
-            str(video),
-            "-i",
-            str(subs),
-            "-c",
-            "copy",
-            "-disposition:s:0",
-            "default",
-            str(output),
-        ]
-    )
+    yield [
+        "-i",
+        str(video),
+        "-i",
+        str(subs),
+        "-c",
+        "copy",
+        "-disposition:s:0",
+        "default",
+        str(output),
+    ]
 
 
 def add_subs_from_string(video: Path, subs: str, output: Path):
-    subprocess.call(["ffprobe", str(video)])
+    validate_video(video)
     with tempfile.TemporaryDirectory() as tempdir:
         subs_file = Path(tempdir) / "subs.ssa"
         subs_file.write_text(subs)
@@ -159,28 +179,26 @@ def add_subs_from_string(video: Path, subs: str, output: Path):
         add_subs(video, subs_file, output)
 
 
+@ffmpeg
 def replace_subs(video, subs, output):
     # Then add the subs to the video
-    subprocess.check_call(
-        [
-            "ffmpeg",
-            "-i",
-            str(video),
-            "-i",
-            str(subs),
-            "-map",
-            "0:a",
-            "-map",
-            "0:v",
-            "-map",
-            "1",
-            "-disposition:s:0",
-            "default",
-            "-c",
-            "copy",
-            str(output),
-        ]
-    )
+    yield [
+        "-i",
+        str(video),
+        "-i",
+        str(subs),
+        "-map",
+        "0:a",
+        "-map",
+        "0:v",
+        "-map",
+        "1",
+        "-disposition:s:0",
+        "default",
+        "-c",
+        "copy",
+        str(output),
+    ]
 
 
 @attrs.frozen
@@ -225,17 +243,28 @@ def cleanup_subs(video: Path, output: Path):
         replace_subs(video, new_subs, output)
 
 
-def ffmpeg_progress(args:list[str]):
+@ffmpeg
+def hardcode_subs(video: Path, output: Path):
+    abs_video = video.absolute()
+    abs_output = output.absolute()
+    with contextlib.chdir(video.parent):
+        yield ["-i", str(abs_video), "-vf", f"subtitles={video.name}", str(abs_output)]
+
+
+def ffmpeg_progress(args: list[str], description:str|None=None):
     with socket.socket() as server:
-        server.bind(("localhost",0))
+        server.bind(("localhost", 0))
         server.listen(1)
         host, port = server.getsockname()
 
-        result:subprocess.CompletedProcess|None = None
+        result: subprocess.CompletedProcess | None = None
 
         def run_process():
             nonlocal result
-            result = subprocess.run(["ffmpeg", '-progress', f"tcp://{host}:{port}"] + args, capture_output=True)
+            result = subprocess.run(
+                ["ffmpeg", "-progress", f"tcp://{host}:{port}"] + args,
+                capture_output=True,
+            )
 
         thread = threading.Thread(target=run_process)
         thread.start()
@@ -246,28 +275,37 @@ def ffmpeg_progress(args:list[str]):
             with conn:
                 # for progress in recv_progress(conn):
                 #     print(progress)
-                for _ in rich.progress.track(recv_progress(conn), ):pass
+                for _ in rich.progress.track(
+                    recv_progress(conn),
+                    description=description,
+                    show_speed=False,
+                ):
+                    pass
         finally:
             thread.join(timeout=1)
 
-        print(result.stderr)
+        # print(result.stderr)
 
-def recv_progress(conn:socket)->Iterator[dict]:
+
+def recv_progress(conn: socket) -> Iterator[dict]:
     for data in iter(lambda: conn.recv(1024), b""):
         yield parse_progress(data)
-def parse_progress(progress:bytes)->dict:
+
+
+def parse_progress(progress: bytes) -> dict:
     raw_values = dict(line.split(b"=") for line in progress.splitlines())
     # There are more fields, but we ignore them.
     # Also, it seems that `out_time_ms` yields th same values as `out_time_us`,
     # and both are microseconds and not milliseconds.
     return dict(
-        frame=int(raw_values[b'frame'].strip()),
-        out_time_us=int(raw_values[b'out_time_us'].strip()),
-        progress=raw_values[b'progress'].strip()
+        frame=int(raw_values[b"frame"].strip()),
+        out_time_us=int(raw_values[b"out_time_us"].strip()),
+        progress=raw_values[b"progress"].strip(),
     )
 
+
 def main():
-    ffmpeg_progress(['-i', r"C:\Temp\beekeeper.mkv", r"C:\Temp\beekeeper8.mp4"])
+    ffmpeg_progress(["-i", r"C:\Temp\beekeeper.mkv", r"C:\Temp\beekeeper8.mp4"])
 
 
 if __name__ == "__main__":
