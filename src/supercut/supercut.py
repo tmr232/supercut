@@ -31,6 +31,7 @@ app.add_typer(edit_app, name="edit")
 util_app = typer.Typer(help="Utility commands", pretty_exceptions_show_locals=False)
 app.add_typer(util_app, name="util")
 
+
 @attrs.define
 class Core:
     _cache: diskcache.Cache

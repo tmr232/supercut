@@ -41,4 +41,9 @@ def get_external_subs(video: Path, language: str = "eng") -> pysubs2.SSAFile:
     if not subs_path:
         raise RuntimeError(f"Failed to find subs for {video}")
 
-    return pysubs2.load(str(subs_path))
+    subs = pysubs2.load(str(subs_path))
+    # Use 16 as font size because that's the default size for ffmpeg.
+    # As a result, when ffmpeg converts the subs back to .srt
+    # later it won't add a `<font>` tag to them.
+    subs.styles["Default"].fontsize = 16
+    return subs
