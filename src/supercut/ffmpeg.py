@@ -282,10 +282,14 @@ def supercut_free(video_parts: list[VideoPart], output: Path):
 
         dirty_subs = temp / f"dirty{video_suffix}"
         total_out_time_us = sum(part.duration_us for part in video_parts)
-        concat_videos.with_progress(
-            total=Total(name=b"out_time_us", total=total_out_time_us, converter=int),
-            description="Concatenating video parts",
-        )(concat_list, dirty_subs)
+        with rich.progress.Progress() as progress:
+            task = progress.add_task(
+                "Concatenating video parts", total=total_out_time_us
+            )
+            for out_time_ms in concat_videos.as_iterator(
+                key=b"out_time_ms", converter=int
+            )(concat_list, dirty_subs):
+                progress.update(task, completed=out_time_ms)
         cleanup_subs(dirty_subs, output)
 
 
