@@ -6,12 +6,22 @@ import socket
 import subprocess
 import tempfile
 import threading
+import typing
 from pathlib import Path
 from typing import Iterator
 
 import attrs
 import pysubs2  # type: ignore[import-untyped]
 import rich.progress
+
+_T = typing.TypeVar("_T")
+
+
+@attrs.frozen(kw_only=True)
+class Total(typing.Generic[_T]):
+    name: bytes
+    total: _T
+    converter: typing.Callable[[str], _T]
 
 
 def ensure_ffmpeg() -> bool:
@@ -23,15 +33,29 @@ def ensure_ffmpeg() -> bool:
         return False
 
 
-def ffmpeg(description: str | None = None):
+def ffmpeg(description: str = ""):
     def decorator(f):
+        nonlocal description
+
+        if not description:
+            description = f"Running {f.__name__}"
+
         context_manager = contextlib.contextmanager(f)
+
+        def with_progress(total: Total | None = None, description: str = description):
+            @functools.wraps(f)
+            def wrapper(*args, **kwargs):
+                with context_manager(*args, **kwargs) as args:
+                    ffmpeg_progress(args, description=description, total=total)
+
+            return wrapper
 
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
-            print(f"Running {f.__name__}")
             with context_manager(*args, **kwargs) as args:
-                ffmpeg_progress(args, description=description)
+                subprocess.run(["ffmpeg", *args], capture_output=True, check=True)
+
+        wrapper.with_progress = with_progress  # type: ignore[attr-defined]
 
         return wrapper
 
@@ -211,6 +235,14 @@ class VideoPart:
     start: int
     end: int
 
+    @property
+    def duration_ms(self):
+        return self.end - self.start
+
+    @property
+    def duration_us(self):
+        return self.duration_ms * 1000
+
 
 def supercut_free(video_parts: list[VideoPart], output: Path):
     with tempfile.TemporaryDirectory() as tempdir:
@@ -218,21 +250,30 @@ def supercut_free(video_parts: list[VideoPart], output: Path):
 
         concat_list = []
         video_suffix = output.suffix
-        for i, part in enumerate(video_parts):
-            trimmed_video = temp / f"trim{i:04}{video_suffix}"
-            trim_video(
-                video=part.video,
-                start=part.start,
-                end=part.end,
-                output=trimmed_video,
+        with rich.progress.Progress() as progress:
+            trim_task = progress.add_task(
+                "Extracting video parts", total=len(video_parts)
             )
+            for i, part in enumerate(video_parts):
+                trimmed_video = temp / f"trim{i:04}{video_suffix}"
+                trim_video(
+                    video=part.video,
+                    start=part.start,
+                    end=part.end,
+                    output=trimmed_video,
+                )
 
-            with_subs = temp / f"withsubs{i:04}{video_suffix}"
-            add_subs_from_string(trimmed_video, part.subs, with_subs)
-            concat_list.append(with_subs)
+                with_subs = temp / f"withsubs{i:04}{video_suffix}"
+                add_subs_from_string(trimmed_video, part.subs, with_subs)
+                concat_list.append(with_subs)
+                progress.update(trim_task, advance=1)
 
         dirty_subs = temp / f"dirty{video_suffix}"
-        concat_videos(concat_list, dirty_subs)
+        total_out_time_us = sum(part.duration_us for part in video_parts)
+        concat_videos.with_progress(
+            total=Total(name=b"out_time_us", total=total_out_time_us, converter=int),
+            description="Concatenating video parts",
+        )(concat_list, dirty_subs)
         cleanup_subs(dirty_subs, output)
 
 
@@ -254,7 +295,15 @@ def hardcode_subs(video: Path, output: Path):
         yield ["-i", str(abs_video), "-vf", f"subtitles={video.name}", str(abs_output)]
 
 
-def ffmpeg_progress(args: list[str], description: str | None = None):
+def ffmpeg_progress(
+    args: typing.Iterable[str],
+    description: str = "",
+    total: Total | None = None,
+):
+    progress_total = None
+    if total is not None:
+        progress_total = total.total
+
     with socket.socket() as server:
         server.bind(("localhost", 0))
         server.listen(1)
@@ -264,7 +313,7 @@ def ffmpeg_progress(args: list[str], description: str | None = None):
             # We run in a thread, as we need to keep reading the output to avoid
             # blocking the pipe.
             subprocess.run(
-                ["ffmpeg", "-progress", f"tcp://{host}:{port}"] + args,
+                ["ffmpeg", "-progress", f"tcp://{host}:{port}", *args],
                 capture_output=True,
             )
 
@@ -274,25 +323,24 @@ def ffmpeg_progress(args: list[str], description: str | None = None):
             conn, addr = server.accept()
 
             with conn:
-                columns = [
-                    rich.progress.TextColumn(
-                        "[progress.description]{task.description}"
-                    ),
-                    rich.progress.BarColumn(),
-                    rich.progress.TimeElapsedColumn(),
-                ]
                 # We need to use `Progress` as a context manager here, and cannot use `rich.progress.track`.
                 # Proper cleanup is critical in case of Ctrl-C, otherwise the program hangs.
-                with rich.progress.Progress(*columns) as progress:
-                    task = progress.add_task(description=description, total=None)
-                    for _ in recv_progress(conn):
-                        pass
-                    progress.update(task, total=100, completed=100)
+                with rich.progress.Progress() as progress_bar:
+                    task = progress_bar.add_task(
+                        description=description, total=progress_total
+                    )
+                    for step_progress in recv_progress(conn):
+                        if total is not None:
+                            progress_bar.update(
+                                task,
+                                completed=total.converter(step_progress[total.name]),
+                            )
+                    progress_bar.update(task, total=100, completed=100)
         finally:
             ffmpeg_thread.join(1)
 
 
-def recv_progress(conn: socket) -> Iterator[dict]:
+def recv_progress(conn: socket.socket) -> Iterator[dict]:
     for data in iter(lambda: conn.recv(1024), b""):
         yield parse_progress(data)
 
@@ -300,10 +348,6 @@ def recv_progress(conn: socket) -> Iterator[dict]:
 def parse_progress(progress: bytes) -> dict:
     raw_values = dict(line.split(b"=") for line in progress.splitlines())
     # There are more fields, but we ignore them.
-    # Also, it seems that `out_time_ms` yields th same values as `out_time_us`,
+    # It seems that `out_time_ms` yields th same values as `out_time_us`,
     # and both are microseconds and not milliseconds.
-    return dict(
-        # frame=int(raw_values[b"frame"].strip()),
-        out_time_us=int(raw_values[b"out_time_us"].strip()),
-        progress=raw_values[b"progress"].strip(),
-    )
+    return {key: value.strip() for key, value in raw_values.items()}
