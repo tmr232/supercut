@@ -246,34 +246,43 @@ def supercut_free(video_parts: list[VideoPart], output: Path):
 
         concat_list = []
         video_suffix = output.suffix
+        total_out_time_us = sum(part.duration_us for part in video_parts)
         with rich.progress.Progress() as progress:
             trim_task = progress.add_task(
-                "Extracting video parts", total=len(video_parts)
+                "Extracting video parts", total=total_out_time_us
             )
+            current_out_time_us = 0
             for i, part in enumerate(video_parts):
                 trimmed_video = temp / f"trim{i:04}{video_suffix}"
-                trim_video(
+                for out_time_us in trim_video.as_iterator(
+                    key=b"out_time_us", converter=int
+                )(
                     video=part.video,
                     start=part.start,
                     end=part.end,
                     output=trimmed_video,
-                )
+                ):
+                    progress.update(
+                        trim_task, completed=current_out_time_us + out_time_us
+                    )
+
+                current_out_time_us += part.duration_us
 
                 with_subs = temp / f"withsubs{i:04}{video_suffix}"
                 add_subs_from_string(trimmed_video, part.subs, with_subs)
                 concat_list.append(with_subs)
-                progress.update(trim_task, advance=1)
+            progress.update(trim_task, completed=total_out_time_us)
 
         dirty_subs = temp / f"dirty{video_suffix}"
-        total_out_time_us = sum(part.duration_us for part in video_parts)
+
         with rich.progress.Progress() as progress:
             task = progress.add_task(
                 "Concatenating video parts", total=total_out_time_us
             )
-            for out_time_ms in concat_videos.as_iterator(
-                key=b"out_time_ms", converter=int
+            for out_time_us in concat_videos.as_iterator(
+                key=b"out_time_us", converter=int
             )(concat_list, dirty_subs):
-                progress.update(task, completed=out_time_ms)
+                progress.update(task, completed=out_time_us)
         cleanup_subs(dirty_subs, output)
 
 
@@ -335,9 +344,11 @@ def ffmpeg_progress_iterator(
 
                 with conn:
                     for step_progress in recv_progress(conn):
-                        progress_queue.put(
-                            progress_converter(step_progress[progress_key])
-                        )
+                        # TODO: yield the full progress dict, perform the parsing outside.
+                        step_value = step_progress.get(progress_key)
+                        if step_value is None or step_value == b"N/A":
+                            continue
+                        progress_queue.put(progress_converter(step_value))
             finally:
                 progress_queue.put(None)
 
