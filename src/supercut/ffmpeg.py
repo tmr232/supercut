@@ -240,49 +240,56 @@ class VideoPart:
         return self.duration_ms * 1000
 
 
+@contextlib.contextmanager
+def progress_tracker(description: str, total: float | None = None):
+    with rich.progress.Progress() as progress:
+        task = progress.add_task(description=description, total=total)
+        yield functools.partial(progress.update, task_id=task)
+        # If we didn't get any exceptions - we should be done now.
+        progress.update(task, completed=total)
+
+
 def supercut_free(video_parts: list[VideoPart], output: Path):
+    trim_video_generator = trim_video.as_iterator(key=b"out_time_us", converter=int)
+    concat_videos_generator = concat_videos.as_iterator(
+        key=b"out_time_us", converter=int
+    )
+
+    concat_list = []
+    video_suffix = output.suffix
+    total_out_time_us = sum(part.duration_us for part in video_parts)
+
     with tempfile.TemporaryDirectory() as tempdir:
         temp = Path(tempdir)
 
-        concat_list = []
-        video_suffix = output.suffix
-        total_out_time_us = sum(part.duration_us for part in video_parts)
-        with rich.progress.Progress() as progress:
-            trim_task = progress.add_task(
-                "Extracting video parts", total=total_out_time_us
-            )
+        with progress_tracker(
+            "Extracting video parts", total=float(total_out_time_us)
+        ) as update:
             current_out_time_us = 0
             for i, part in enumerate(video_parts):
                 trimmed_video = temp / f"trim{i:04}{video_suffix}"
-                for out_time_us in trim_video.as_iterator(
-                    key=b"out_time_us", converter=int
-                )(
+                for out_time_us in trim_video_generator(
                     video=part.video,
                     start=part.start,
                     end=part.end,
                     output=trimmed_video,
                 ):
-                    progress.update(
-                        trim_task, completed=current_out_time_us + out_time_us
-                    )
+                    update(completed=current_out_time_us + out_time_us)
 
                 current_out_time_us += part.duration_us
 
                 with_subs = temp / f"withsubs{i:04}{video_suffix}"
                 add_subs_from_string(trimmed_video, part.subs, with_subs)
                 concat_list.append(with_subs)
-            progress.update(trim_task, completed=total_out_time_us)
 
         dirty_subs = temp / f"dirty{video_suffix}"
 
-        with rich.progress.Progress() as progress:
-            task = progress.add_task(
-                "Concatenating video parts", total=total_out_time_us
-            )
-            for out_time_us in concat_videos.as_iterator(
-                key=b"out_time_us", converter=int
-            )(concat_list, dirty_subs):
-                progress.update(task, completed=out_time_us)
+        with progress_tracker(
+            "Concatenating video parts", total=float(total_out_time_us)
+        ) as update:
+            for out_time_us in concat_videos_generator(concat_list, dirty_subs):
+                update(completed=out_time_us)
+
         cleanup_subs(dirty_subs, output)
 
 
