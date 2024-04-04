@@ -1,8 +1,6 @@
-import abc
 import concurrent.futures
 import contextlib
 import functools
-import inspect
 import json
 import operator
 import queue
@@ -28,53 +26,6 @@ def ensure_ffmpeg() -> bool:
     except Exception:
         return False
 
-
-class PathCheck:
-    @classmethod
-    def check_path(self, path:Path):
-        raise NotImplementedError
-
-class NewFile(PathCheck):
-    @classmethod
-    def check_path(self, path: Path):
-        if path.exists():
-            raise FileExistsError(f"File already exists: {path!s}")
-
-
-class ExistingFile(PathCheck):
-    @classmethod
-    def check_path(self, path: Path):
-        if path.exists():
-            raise FileNotFoundError(f"File not found: {path!s}")
-
-def check_paths(f):
-    annotations = typing.get_type_hints(f, include_extras=True)
-
-    path_checks = {}
-    for name, value in annotations.items():
-        metadata = getattr(value, '__metadata__', None)
-        if metadata is None:
-            continue
-
-        rich.print(value, value.__metadata__)
-        for annotation in metadata:
-            if issubclass(annotation , PathCheck):
-                path_checks[name] = annotation
-                break
-
-    signature = inspect.signature(f)
-
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        bound_args = signature.bind(*args, **kwargs)
-
-        for name, value in bound_args.arguments.items():
-            if (path_check := path_checks.get(name)) is not None:
-                path_check.check_path(value)
-
-        return f(*args, **kwargs)
-
-    return wrapper
 
 def ffmpeg(description: str = ""):
     def decorator(f):
@@ -298,8 +249,7 @@ def progress_tracker(description: str, total: float | None = None):
         progress.update(task, completed=total)
 
 
-@check_paths
-def supercut_free(video_parts: list[VideoPart], output: typing.Annotated[Path, NewFile]):
+def supercut_free(video_parts: list[VideoPart], output: Path):
     trim_video_generator = trim_video.as_iterator(key=b"out_time_us", converter=int)
     concat_videos_generator = concat_videos.as_iterator(
         key=b"out_time_us", converter=int
