@@ -347,6 +347,7 @@ def ffmpeg_progress_iterator(
 
         def advance():
             try:
+                server.settimeout(1)
                 conn, _addr = server.accept()
 
                 with conn:
