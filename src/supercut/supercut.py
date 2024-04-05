@@ -121,6 +121,7 @@ def trim_subs(subs: pysubs2.SSAFile, start: int, end: int) -> pysubs2.SSAFile:
 
 
 def _make_video_parts(
+    *,
     videos: list[Path],
     cache_dir: Path | None,
     external_subs: bool,
