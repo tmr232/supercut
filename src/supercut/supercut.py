@@ -16,7 +16,7 @@ import rich.progress
 import rich.table
 import typer
 
-from supercut import ffmpeg, vlc
+from supercut import ffmpeg, mlt, vlc
 from supercut.subtitles import get_external_subs
 
 app = typer.Typer(
@@ -207,6 +207,48 @@ def render(
                 video_parts.append(part)
 
         ffmpeg.supercut_free(video_parts, output=output)
+
+
+@app.command()
+def export_mlt(
+    videos: typing.Annotated[
+        list[Path], typer.Argument(help="The videos to supercut, in order.")
+    ],
+    query: typing.Annotated[str, typer.Option(help="String to search in subtitles")],
+    output: typing.Annotated[Path, typer.Option(help="Ouptut file")],
+    language: typing.Annotated[
+        str, typer.Option(help="Subtitle language to use")
+    ] = "eng",
+    name: typing.Annotated[
+        Optional[str], typer.Option(help="Name of the speaker.")
+    ] = None,
+    cache_dir: typing.Annotated[
+        Optional[Path],
+        typer.Option(help="Cache directory location. Speeds up repeated runs."),
+    ] = None,
+    external_subs: typing.Annotated[
+        bool, typer.Option(help="Search for external subs.")
+    ] = False,
+):
+    """
+    Generate a ShotCut .mlt project of the supercut.
+    """
+    videos = sorted(videos)
+    with Core.from_dir(cache_dir, external_subs=external_subs) as core:
+        video_parts = []
+        all_subs = get_all_subs(videos, core, language)
+        for video, subs in zip(videos, all_subs):
+            events = query_events(subs, query, name=name)
+            for event in events:
+                part = ffmpeg.VideoPart(
+                    video=video,
+                    subs=trim_subs(subs, event.start, event.end).to_string("ass"),
+                    start=event.start,
+                    end=event.end,
+                )
+                video_parts.append(part)
+
+    output.write_text(mlt.write_mlt(video_parts))
 
 
 @app.command(name="list")
