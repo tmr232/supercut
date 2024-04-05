@@ -87,11 +87,9 @@ def get_subtitle_stream_id(video: Path, language: str = "eng") -> int:
     ]
     for i, stream in enumerate(subtitle_streams):
         if stream.get("tags", {}).get("language") == language:
-            break
-    else:
-        raise RuntimeError()
+            return i
 
-    return i
+    raise RuntimeError()
 
 
 def extract_subtitle_stream(

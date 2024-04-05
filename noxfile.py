@@ -6,8 +6,8 @@ SOURCE_LOCATIONS = ("src", "tests", "noxfile.py")
 nox.options.sessions = ["format", "lint", "test"]
 
 
-@nox.session(python=False)
-def format(session: Session) -> None:
+@nox.session(python=False, name="format")
+def format_(session: Session) -> None:
     session.run("ruff", "check", "--fix-only", "--exit-zero", *SOURCE_LOCATIONS)
     session.run("isort", *SOURCE_LOCATIONS)
     session.run("black", *SOURCE_LOCATIONS)

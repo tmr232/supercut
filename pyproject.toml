@@ -63,6 +63,10 @@ testpaths = [
 [tool.ruff]
 # Avoid automatic removal of unused variables
 unfixable = ['F841'] # unused-variable
+select = ["E4", "E7", "E9", "F", "PERF", "ERA", "SIM", "C4", "A", "B","BLE", "C90"]
+# Same as Black.
+line-length = 88
+indent-width = 4
 
 
 [tool.coverage]

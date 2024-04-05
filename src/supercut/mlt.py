@@ -48,11 +48,11 @@ class Element:
 def make_chain(*, id_: str, resource: Path) -> Element:
     return Element(
         tag="chain",
-        attributes=dict(id=id_),
+        attributes={"id": id_},
         children=[
             Element(
                 tag="property",
-                attributes=dict(name="resource"),
+                attributes={"name": "resource"},
                 children=str(resource),
             )
         ],
@@ -92,7 +92,7 @@ def make_bin(parts: list[VideoPart], bin_id: str) -> list[Element]:
         children=[
             make_property(name="xml_retain", value="1"),
             *(
-                Element(tag="entry", attributes=dict(producer=id_))
+                Element(tag="entry", attributes={"producer": id_})
                 for id_ in main_bin_ids
             ),
         ],
@@ -151,12 +151,12 @@ def write_mlt(parts: list[VideoPart]) -> str:
 
     mlt = Element(
         tag="mlt",
-        attributes=dict(
-            LC_NUMERIC="C",
-            version="7.23.0",
-            title="Supercut",
-            producer=main_bin_id,
-        ),
+        attributes={
+            "LC_NUMERIC": "C",
+            "version": "7.23.0",
+            "title": "Supercut",
+            "producer": main_bin_id,
+        },
         children=[*main_bin, background, *playlist, tractor],
     )
 

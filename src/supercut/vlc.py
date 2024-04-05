@@ -17,9 +17,8 @@ def get_vlc() -> str:
     if vlc := os.environ.get(VLC_ENV_VAR, None):
         return vlc
 
-    if platform.system() == "Windows":
-        if os.path.isfile(WINDOWS_DEFAULT_PATH):
-            return WINDOWS_DEFAULT_PATH
+    if platform.system() == "Windows" and os.path.isfile(WINDOWS_DEFAULT_PATH):
+        return WINDOWS_DEFAULT_PATH
 
     return "vlc"
 
