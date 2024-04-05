@@ -1,21 +1,17 @@
-import math
-from pathlib import Path
-
 from supercut.ffmpeg import VideoPart
 
 
-
-def format_time(time_ms:int)->str:
-    frame = round((time_ms % 1000) / 1000 * 23.98)+1
+def format_time(time_ms: int) -> str:
+    frame = round((time_ms % 1000) / 1000 * 23.98) + 1
     total_seconds = time_ms // 1000
     seconds = total_seconds % 60
     minutes = (total_seconds // 60) % 60
-    hours = (total_seconds // 3600)
+    hours = total_seconds // 3600
 
     return f"{hours:02}:{minutes:02}:{seconds:02}:{frame:02}"
 
 
-def write_edl(title:str, parts:list[VideoPart]):
+def write_edl(title: str, parts: list[VideoPart]):
     edl_lines = []
 
     title = f"TITLE: {title}"
@@ -39,5 +35,3 @@ def write_edl(title:str, parts:list[VideoPart]):
         record_in_ms += part.duration_ms
 
     return "\n".join(edl_lines)
-
-
