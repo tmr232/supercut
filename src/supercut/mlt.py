@@ -3,7 +3,7 @@ from typing import Iterator
 
 import attrs
 
-import supercut.video_part
+from supercut.video_part import VideoPart
 
 
 def ms_to_timecode(time_ms: int) -> str:
@@ -78,7 +78,7 @@ def make_property(*, name: str, value: str) -> Element:
     )
 
 
-def make_bin(parts: list[supercut.video_part.VideoPart], bin_id: str) -> list[Element]:
+def make_bin(parts: list[VideoPart], bin_id: str) -> list[Element]:
     chains: list[Element] = []
     main_bin_ids = []
     for i, video in enumerate({part.video for part in parts}):
@@ -101,7 +101,7 @@ def make_bin(parts: list[supercut.video_part.VideoPart], bin_id: str) -> list[El
 
 
 def make_playlist(
-    parts: list[supercut.video_part.VideoPart],
+    parts: list[VideoPart],
     playlist_id: str,
     name: str | None = None,
 ) -> list[Element]:
@@ -123,7 +123,7 @@ def make_playlist(
     return [*chains, playlist]
 
 
-def write_mlt(parts: list[supercut.video_part.VideoPart]) -> str:
+def write_mlt(parts: list[VideoPart]) -> str:
     main_bin_id = "main_bin"
     main_bin = make_bin(parts, main_bin_id)
 
