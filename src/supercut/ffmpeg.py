@@ -11,9 +11,10 @@ import typing
 from pathlib import Path
 from typing import Iterator
 
-import attrs
 import pysubs2  # type: ignore[import-untyped]
 import rich.progress
+
+from supercut.video_part import VideoPart
 
 _T = typing.TypeVar("_T")
 
@@ -222,22 +223,6 @@ def replace_subs(video, subs, output):
         "copy",
         str(output),
     ]
-
-
-@attrs.frozen
-class VideoPart:
-    video: Path
-    subs: str
-    start: int
-    end: int
-
-    @property
-    def duration_ms(self):
-        return self.end - self.start
-
-    @property
-    def duration_us(self):
-        return self.duration_ms * 1000
 
 
 @contextlib.contextmanager

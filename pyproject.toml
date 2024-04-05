@@ -32,6 +32,7 @@ nox = "^2023.4.22"
 mypy = "^1.2.0"
 pytest = "^8.0.0"
 pytest-cov = "^4.0.0"
+scriv = "^1.5.1"
 
 
 [tool.black]
@@ -66,3 +67,7 @@ unfixable = ['F841'] # unused-variable
 
 [tool.coverage]
 report.skip_covered = true
+
+[tool.scriv]
+format = "md"
+collect.add = true

@@ -1,4 +1,4 @@
-import contextlib
+import itertools
 import os
 import platform
 import subprocess
@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Iterator
 
-import rich
+from supercut.video_part import VideoPart
 
 WINDOWS_DEFAULT_PATH = r"C:\Program Files\VideoLAN\VLC\vlc.exe"
 
@@ -28,33 +28,24 @@ def ensure_vlc() -> bool:
     try:
         subprocess.check_call([get_vlc(), "-I", "dummy", "vlc://quit"])
         return True
-    except Exception:
+    except subprocess.CalledProcessError:
         return False
 
 
-def supercut(video: Path, sections: list[tuple[float, float]]):
-    cuts = []
-    for start, end in sections:
-        cuts.extend(
-            [f":start-time={start}", f":stop-time={end}", str(video.absolute())]
+def _create_playlist_entry(part: VideoPart, language: str | None) -> Iterator[str]:
+    yield f"#EXTVLCOPT:start-time={part.start / 1000}"
+    yield f"#EXTVLCOPT:stop-time={part.end / 1000}"
+    if language:
+        yield f"#EXTVLCOPT:sub-language={language}"
+    yield str(part.video.absolute())
+
+
+def create_playlist(parts: list[VideoPart], language: str | None = None) -> str:
+    return "\n".join(
+        itertools.chain(
+            *(_create_playlist_entry(part, language=language) for part in parts)
         )
-    cmd = [get_vlc(), "--fullscreen", "--no-osd", *cuts, "vlc://quit"]
-    rich.print(cmd)
-    subprocess.check_call(cmd)
-
-
-def create_supercut_playlist(
-    video: Path, sections: list[tuple[int, int]], language: str | None = None
-) -> str:
-    lines = []
-    for start, stop in sections:
-        lines.append(f"#EXTVLCOPT:start-time={start/1000}")
-        lines.append(f"#EXTVLCOPT:stop-time={stop/1000}")
-        if language:
-            lines.append(f"#EXTVLCOPT:sub-language={language}")
-        lines.append(str(video.absolute()))
-
-    return "\n".join(lines)
+    )
 
 
 def view_playlist(playlist: str):
@@ -67,25 +58,6 @@ def view_playlist(playlist: str):
         )
 
 
-def supercut_playlist(
-    video: Path,
-    sections: list[tuple[int, int]],
-    output: Path | None = None,
-    language: str | None = None,
-):
-    playlist = create_supercut_playlist(video, sections, language=language)
-
-    @contextlib.contextmanager
-    def _output_path() -> Iterator[Path]:
-        if output is not None:
-            yield output
-
-        else:
-            with tempfile.TemporaryDirectory() as tempdir:
-                yield Path(tempdir) / "playlist.m3u8"
-
-    with _output_path() as output_path:
-        output_path.write_text(playlist)
-        subprocess.check_call(
-            [get_vlc(), "--fullscreen", "--no-osd", str(output_path), "vlc://quit"]
-        )
+def preview(parts: list[VideoPart], language: str | None = None):
+    playlist = create_playlist(parts, language=language)
+    view_playlist(playlist)

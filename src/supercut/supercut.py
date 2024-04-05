@@ -16,6 +16,7 @@ import rich.progress
 import rich.table
 import typer
 
+import supercut.video_part
 from supercut import ffmpeg, mlt, vlc
 from supercut.subtitles import get_external_subs
 
@@ -143,16 +144,21 @@ def preview(
     Quick preview using VLC
     """
     videos = sorted(videos)
-    playlists = []
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
+        video_parts = []
         all_subs = get_all_subs(videos, core, language)
         for video, subs in zip(videos, all_subs):
-            sections = get_sections(subs, query=query, name=name)
-            playlist = vlc.create_supercut_playlist(video, sections)
-            playlists.append(playlist)
+            events = query_events(subs, query, name=name)
+            for event in events:
+                part = supercut.video_part.VideoPart(
+                    video=video,
+                    subs=trim_subs(subs, event.start, event.end).to_string("ass"),
+                    start=event.start,
+                    end=event.end,
+                )
+                video_parts.append(part)
 
-        full_playlist = "\n".join(playlists)
-        vlc.view_playlist(full_playlist)
+        vlc.preview(video_parts, language=language)
 
 
 def get_all_subs(
@@ -198,7 +204,7 @@ def render(
         for video, subs in zip(videos, all_subs):
             events = query_events(subs, query, name=name)
             for event in events:
-                part = ffmpeg.VideoPart(
+                part = supercut.video_part.VideoPart(
                     video=video,
                     subs=trim_subs(subs, event.start, event.end).to_string("ass"),
                     start=event.start,
@@ -240,7 +246,7 @@ def export_mlt(
         for video, subs in zip(videos, all_subs):
             events = query_events(subs, query, name=name)
             for event in events:
-                part = ffmpeg.VideoPart(
+                part = supercut.video_part.VideoPart(
                     video=video,
                     subs=trim_subs(subs, event.start, event.end).to_string("ass"),
                     start=event.start,
@@ -410,27 +416,23 @@ def edit_preview(
     videos = sorted(videos)
     new_order = parse_list(listfile)
 
-    playlist = []
     with Core.from_dir(cache_dir, external_subs=external_subs) as core:
         video_parts = []
         all_subs = get_all_subs(videos, core, language)
         for video, subs in zip(videos, all_subs):
             events = query_events(subs, query, name=name)
             for event in events:
-                part = (video, event.start, event.end)
+                part = supercut.video_part.VideoPart(
+                    video=video,
+                    subs=trim_subs(subs, event.start, event.end).to_string("ass"),
+                    start=event.start,
+                    end=event.end,
+                )
                 video_parts.append(part)
 
         video_parts = [video_parts[i] for i in new_order]
 
-        for video, start, stop in video_parts:
-            playlist.append(f"#EXTVLCOPT:start-time={start/1000}")
-            playlist.append(f"#EXTVLCOPT:stop-time={stop/1000}")
-            if language:
-                playlist.append(f"#EXTVLCOPT:sub-language={language}")
-            playlist.append(str(video.absolute()))
-
-        full_playlist = "\n".join(playlist)
-        vlc.view_playlist(full_playlist)
+        vlc.preview(video_parts, language=language)
 
 
 @edit_app.command(name="render")
@@ -467,7 +469,7 @@ def edit_render(
         for video, subs in zip(videos, all_subs):
             events = query_events(subs, query, name=name)
             for event in events:
-                part = ffmpeg.VideoPart(
+                part = supercut.video_part.VideoPart(
                     video=video,
                     subs=trim_subs(subs, event.start, event.end).to_string("ass"),
                     start=event.start,
