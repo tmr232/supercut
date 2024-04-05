@@ -33,57 +33,60 @@ class Element:
 
 
 def write_mlt(parts: list[ffmpeg.VideoPart]) -> str:
-    producers: dict[str, Element] = {}
-    video_to_producer: dict[Path, str] = {}
+    # Note that we need a different `chain` producer for every instance
+    # of the same video. This includes the main bin, and the playlist.
+    chains:list[Element] = []
+    playlist_entries = []
+    main_bin_videos = set()
+    main_bin_ids = []
+    for i, part in enumerate(parts):
+        chain_id = f'chain{i}'
+        ids = [chain_id]
+        if part.video not in main_bin_videos:
+            main_bin_id = f'main_bin_chain{i}'
+            ids.append(main_bin_id)
+            main_bin_ids.append(main_bin_id)
+            main_bin_videos.add(part.video)
 
-    for part in parts:
-        if part.video in video_to_producer:
-            continue
+        for id_ in ids:
+            chain = Element(
+                tag="chain",
+                attributes=dict(id=id_),
+                children=[
+                    Element(
+                        tag="property",
+                        attributes=dict(name="resource"),
+                        children=str(part.video),
+                    )
+                ],
+            )
+            chains.append(chain)
 
-        producer_id = f"producer{len(producers)}"
-        producer = Element(
-            tag="producer",
-            attributes=dict(id=producer_id),
-            children=[
-                Element(
-                    tag="property",
-                    attributes=dict(name="resource"),
-                    children=str(part.video),
-                )
-            ],
+        entry = Element(
+            tag="entry",
+            attributes={
+                "producer": chain_id,
+                "in": ms_to_timecode(part.start),
+                "out": ms_to_timecode(part.end),
+            },
         )
-
-        producers[producer_id] = producer
-        video_to_producer[part.video] = producer_id
-
-    main_bin_entries = [
-        Element(tag="entry", attributes=dict(producer=producer_id))
-        for producer_id in producers
-    ]
+        playlist_entries.append(entry)
 
     main_bin = Element(
         tag="playlist",
         attributes={"id": "main_bin"},
         children=[
             Element(tag="property", attributes={"name": "xml_retain"}, children="1"),
-            *main_bin_entries,
+            *(
+        Element(tag="entry", attributes=dict(producer=id_))
+        for id_ in main_bin_ids
+            ),
         ],
     )
 
+
     background = Element(tag="playlist", attributes={"id": "background"})
 
-    playlist_entries = []
-
-    for part in parts:
-        entry = Element(
-            tag="entry",
-            attributes={
-                "producer": video_to_producer[part.video],
-                "in": ms_to_timecode(part.start),
-                "out": ms_to_timecode(part.end),
-            },
-        )
-        playlist_entries.append(entry)
 
     playlist = Element(
         tag="playlist", attributes={"id": "playlist0"}, children=playlist_entries
@@ -122,7 +125,7 @@ def write_mlt(parts: list[ffmpeg.VideoPart]) -> str:
             title="Supercut",
             producer="main_bin",
         ),
-        children=[*producers.values(), main_bin, background, playlist, tractor],
+        children=[*chains, main_bin, background, playlist, tractor],
     )
 
     return '<?xml version="1.0" standalone="no"?>\n' + "\n".join(mlt.to_xml())
