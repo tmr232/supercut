@@ -14,13 +14,15 @@ def indent(line: str) -> str:
 class Element:
     tag: str
     attributes: dict[str, str]
-    children: list["Element"] | str = attrs.field(factory=list)
+    children: list["Element"] | str|None = None
 
     def to_xml(self) -> Iterator[str]:
         attributes = " ".join(
             f'{name}="{value}"' for name, value in self.attributes.items()
         )
-        if isinstance(self.children, str):
+        if self.children is None:
+            yield f"<{self.tag} {attributes}/>"
+        elif isinstance(self.children, str):
             yield f"<{self.tag} {attributes}>{self.children}</{self.tag}>"
         else:
             yield f"<{self.tag} {attributes}>"
@@ -129,7 +131,7 @@ def write_mlt(parts: list[ffmpeg.VideoPart]) -> str:
 def ms_to_timecode(time_ms: int) -> str:
     total_seconds = time_ms / 1000
     seconds = total_seconds % 60
-    minutes = (total_seconds // 60) % 60
-    hours = total_seconds // 3600
+    minutes = int((total_seconds // 60) % 60)
+    hours = int(total_seconds // 3600)
 
     return f"{hours:02}:{minutes:02}:{seconds:06.3f}"
