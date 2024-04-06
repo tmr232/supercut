@@ -24,7 +24,7 @@ def ensure_ffmpeg() -> bool:
         subprocess.check_call(["ffmpeg", "-version"], stdout=subprocess.PIPE)
         subprocess.check_call(["ffprobe", "-version"], stdout=subprocess.PIPE)
         return True
-    except Exception:
+    except subprocess.CalledProcessError:
         return False
 
 
