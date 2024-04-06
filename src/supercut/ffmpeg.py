@@ -225,11 +225,68 @@ def replace_subs(video, subs, output):
 
 @contextlib.contextmanager
 def progress_tracker(description: str, total: float | None = None):
-    with rich.progress.Progress() as progress:
+    with rich.progress.Progress(
+        *rich.progress.Progress.get_default_columns(), rich.progress.TimeElapsedColumn()
+    ) as progress:
         task = progress.add_task(description=description, total=total)
         yield functools.partial(progress.update, task_id=task)
         # If we didn't get any exceptions - we should be done now.
         progress.update(task, completed=total)
+
+
+def cut_parts(
+    video_parts: list[VideoPart],
+    output_dir: Path,
+    out_suffix: str | None,
+    margin: int = 0,
+) -> list[VideoPart]:
+    trim_video_generator = trim_video.as_iterator(key=b"out_time_us", converter=int)
+
+    total_out_time_us = sum(part.duration_us for part in video_parts) + (
+        len(video_parts) * margin * 1000
+    )
+
+    trimmed_parts = []
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        temp = Path(tempdir)
+
+        with progress_tracker(
+            "Extracting video parts", total=float(total_out_time_us)
+        ) as update:
+            current_out_time_us = 0
+            for i, part in enumerate(video_parts):
+                if out_suffix is not None:
+                    suffix = out_suffix
+                else:
+                    suffix = part.video.suffix
+                trimmed_video = temp / f"trim{i:04}{suffix}"
+                for out_time_us in trim_video_generator(
+                    video=part.video,
+                    start=max(0, part.start - margin),
+                    end=part.end + margin,
+                    output=trimmed_video,
+                ):
+                    update(completed=current_out_time_us + out_time_us)
+
+                current_out_time_us += part.duration_us
+
+                with_subs = output_dir / f"withsubs{i:04}{suffix}"
+                add_subs_from_string(trimmed_video, part.subs, with_subs)
+                if part.start < margin:
+                    new_start = 0
+                else:
+                    new_start = margin
+                trimmed_parts.append(
+                    VideoPart(
+                        video=with_subs,
+                        subs=part.subs,
+                        start=new_start,
+                        end=new_start + part.duration_ms,
+                    )
+                )
+
+    return trimmed_parts
 
 
 def supercut_free(video_parts: list[VideoPart], output: Path):

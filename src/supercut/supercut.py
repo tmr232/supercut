@@ -249,6 +249,15 @@ def export_mlt(
     external_subs: typing.Annotated[
         bool, typer.Option(help="Search for external subs.")
     ] = False,
+    cut: typing.Annotated[
+        bool, typer.Option(help="Cut the video into parts for export.")
+    ] = False,
+    cut_suffix: typing.Annotated[
+        Optional[str], typer.Option(help="The format to save the cuts in.")
+    ] = None,
+    cut_margin: typing.Annotated[
+        float, typer.Option(help="Cut margin for corrections, in seconds.")
+    ] = 1.0,
 ):
     """
     Generate a ShotCut .mlt project of the supercut.
@@ -261,6 +270,13 @@ def export_mlt(
         name=name,
         query=query,
     )
+
+    if cut:
+        out_dir = output.with_suffix(".parts")
+        out_dir.mkdir(exist_ok=False)
+        video_parts = ffmpeg.cut_parts(
+            video_parts, out_dir, out_suffix=cut_suffix, margin=int(cut_margin * 1000)
+        )
 
     output.write_text(mlt.write_mlt(video_parts))
 
@@ -485,6 +501,17 @@ def hardcode_subs(
 ):
     """Hardcode the subtitles into the video frames."""
     ffmpeg.hardcode_subs(video, output=output)
+
+
+@util_app.command()
+def delay_subs(
+    srt: typing.Annotated[Path, typer.Argument(help="The subtitle .srt file to read")],
+    delay: typing.Annotated[int, typer.Option(help="Subtitle delay in milliseconds")],
+    output: typing.Annotated[Path, typer.Option(help="Output file")],
+):
+    subs = pysubs2.SSAFile.load(str(srt))
+    subs.shift(ms=delay)
+    subs.save(str(output))
 
 
 @app.command()
